@@ -1,103 +1,76 @@
 package org.example
 
+import org.grapheco.lynx.{LynxRecord, LynxResult, PlanAware}
+import org.grapheco.lynx.logical.{LPTNode, LogicalPlannerContext}
+import org.grapheco.lynx.physical.{PPTNode, PhysicalPlannerContext}
+import org.grapheco.lynx.runner.{CypherRunner, CypherRunnerContext, ExecutionContext, GraphModel}
 import org.grapheco.lynx.types.LynxValue
 import org.grapheco.lynx.types.property.LynxString
 import org.grapheco.lynx.types.structural.{LynxNodeLabel, LynxPropertyKey, LynxRelationshipType}
+import org.grapheco.lynx.util.FormatUtils
+import org.opencypher.v9_0.ast.Statement
 
 import java.sql.{Connection, DriverManager}
 import scala.collection.mutable
 
-class MySQLTestBase extends MyGraph {
-  def loadMySQL(): Unit = {
-    val url = "jdbc:mysql://10.0.82.144:3306/LDBC1?serverTimezone=UTC&useUnicode=true&characterEncoding=utf8&useSSL=false"
-    val driver = "com.mysql.cj.jdbc.Driver"
-    val username = "root"
-    val password = "Hc1478963!"
-    // var connection: Connection = _
+class DemoRunner(model: GraphModel) extends CypherRunner(model: GraphModel){
+  private implicit lazy val runnerContext = CypherRunnerContext(types, procedures, dataFrameOperator, expressionEvaluator, model)
 
-    //val nodes: Array[String] = Array("Comment", "Forum", "Organisation", "Person", "Place", "Post", "Tag", "Tagclass")
-    val nodes: Array[String] = Array("Person")
-    val relations: Array[String] = Array("containerOf", "hasCreator", "hasInterest", "hasMember", "hasModerator", "hasTag",
-      "hasType, isLocatedIn, isPartOf, isSubclassOf", "knows", "likes", "replyOf", "studyAt", "workAt")
+  def run(query: String, param: Map[String, Any], ast: Boolean, lp: Boolean, pp: Boolean): LynxResult = {
+    val (statement, param2, state) = queryParser.parse(query)
+    if (ast) println(s"AST tree: ${statement}")
 
-    Class.forName(driver)
+    val logicalPlannerContext = LogicalPlannerContext(param ++ param2, runnerContext)
+    val logicalPlan = logicalPlanner.plan(statement, logicalPlannerContext)
+    if (lp) println(s"logical plan: \r\n${logicalPlan.pretty}")
 
-    val connection: Connection = DriverManager.getConnection(url, username, password)
-    val statement = connection.createStatement
+    val physicalPlannerContext = PhysicalPlannerContext(param ++ param2, runnerContext)
+    val physicalPlan = physicalPlanner.plan(logicalPlan)(physicalPlannerContext)
+    //    logger.debug(s"physical plan: \r\n${physicalPlan.pretty}")
 
-    for (nodesTable: String <- nodes) {
-//        val query_1 = s"DESCRIBE ${nodesTable}"
-//        val description = statement.executeQuery(query_1)
-//        while (description.next) {}
+    val optimizedPhysicalPlan = physicalPlanOptimizer.optimize(physicalPlan, physicalPlannerContext)
+    if (pp) println(s"optimized physical plan: \r\n${optimizedPhysicalPlan.pretty}")
 
-      //Import nodes
-      val data = statement.executeQuery(s"SELECT * FROM $nodesTable LIMIT 20000")
-      val metadata = data.getMetaData
-      val columnCount = metadata.getColumnCount
+    val ctx = ExecutionContext(physicalPlannerContext, statement, param ++ param2)
+    val df = optimizedPhysicalPlan.execute(ctx)
 
-      while (data.next) {
-        var id: Long = 0
-        var labels: String = ""
-        val propMap: mutable.Map[LynxPropertyKey, LynxValue] = mutable.Map.empty[LynxPropertyKey, LynxValue]
+    new LynxResult() with PlanAware {
+      val schema = df.schema
+      val columnNames = schema.map(_._1)
+      val columnMap = columns().zipWithIndex.toMap 
 
-        for (i <- 1 to columnCount) {
-          val columnName = metadata.getColumnName(i)
-          val columnValue = data.getString(i)
-          if (columnName.contains("ID")) {
-            id = columnValue.toLong
-          }
-          else if (columnName.contains("LABEL")) {
-            labels = columnValue
-          }
-          else {
-            propMap.put(LynxPropertyKey(columnName), LynxString(columnValue))
-          }
+      override def show(limit: Int): Unit =
+        FormatUtils.printTable(columnNames, df.records.take(limit).toSeq.map(_.map(types.format)))
+
+      override def columns(): Seq[String] = columnNames
+
+      override def records(): Iterator[LynxRecord] = df.records.map(values => LynxRecord(columnMap, values))
+
+      override def getASTStatement(): (Statement, Map[String, Any]) = (statement, param2)
+
+      override def getLogicalPlan(): LPTNode = logicalPlan
+
+      override def getPhysicalPlan(): PPTNode = physicalPlan
+
+      override def getOptimizerPlan(): PPTNode = optimizedPhysicalPlan
+
+      override def cache(): LynxResult = {
+        val source = this
+        val cached = df.records.toSeq
+
+        new LynxResult {
+          override def show(limit: Int): Unit =
+            FormatUtils.printTable(columnNames, cached.take(limit).map(_.map(types.format)))
+
+          override def cache(): LynxResult = this
+
+          override def columns(): Seq[String] = columnNames
+
+          override def records(): Iterator[LynxRecord] = cached.map(values => LynxRecord(columnMap, values)).toIterator
+
         }
-
-        _nodes += MyId(id) -> MyNode(MyId(id), Seq(LynxNodeLabel(labels)), propMap.toMap)
       }
     }
-
-    //Import relations
-    for (nodesTable <- relations) {
-      val data = statement.executeQuery(s"SELECT * FROM $nodesTable LIMIT 1000")
-      val metadata = data.getMetaData
-      val columnCount = metadata.getColumnCount
-
-      while (data.next) {
-        var id: Long = 0
-        var relType: Option[LynxRelationshipType] = None
-        var startID: Long = 0
-        var endID: Long = 0
-        val propMap: mutable.Map[LynxPropertyKey, LynxValue] = mutable.Map.empty
-
-        for (i <- 1 to columnCount) {
-          val columnName = metadata.getColumnName(i)
-          val columnValue = data.getString(i)
-          if (columnName.contains("REL_ID")) {
-            id = columnValue.toLong
-          }
-          else if (columnName.contains("TYPE")) {
-            relType = Some(LynxRelationshipType(columnValue))
-          }
-          else if (columnName.contains("START_ID")) {
-            startID = columnValue.toLong
-          }
-          else if (columnName.contains("END_ID")) {
-            endID = columnValue.toLong
-          }
-          else {
-            propMap.put(LynxPropertyKey(columnName), LynxString(columnValue))
-          }
-        }
-
-        _relationships += MyId(id) -> MyRelationship(MyId(id), MyId(startID), MyId(endID), relType, propMap.toMap)
-      }
-    }
-
-
-
-    // this.run("match(n:Comment) set n:Message", Map())
-    // this.run("match(n:Post) set n:Message", Map())
   }
+
 }

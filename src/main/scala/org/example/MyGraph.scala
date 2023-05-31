@@ -1,139 +1,241 @@
 package org.example
 
-import org.grapheco.lynx.LynxResult
-import org.grapheco.lynx.physical._
-import org.grapheco.lynx.runner.{CypherRunner, GraphModel, WriteTask}
+import cats.effect.IO
+import doobie.Fragments
+import doobie.implicits.{toDoobieStreamOps, toSqlInterpolator}
+import doobie._
+import doobie.implicits._
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+import doobie.util.fragment.Fragment
+import doobie.util.transactor.Transactor
+import org.grapheco.lynx.{LynxRecord, LynxResult, PlanAware}
+import org.grapheco.lynx.logical.{LPTNode, LogicalPlannerContext}
+import org.grapheco.lynx.physical.{NodeInput, PPTNode, PhysicalPlannerContext, RelationshipInput}
+import org.grapheco.lynx.runner.{CypherRunner, CypherRunnerContext, ExecutionContext, GraphModel, NodeFilter, RelationshipFilter, WriteTask}
 import org.grapheco.lynx.types.LynxValue
-import org.grapheco.lynx.types.structural._
+import org.grapheco.lynx.types.property.{LynxInteger, LynxString}
+import org.grapheco.lynx.types.structural.{LynxId, LynxNode, LynxNodeLabel, LynxPath, LynxPropertyKey, LynxRelationship, LynxRelationshipType, PathTriple}
+import org.grapheco.lynx.util.FormatUtils
+import org.opencypher.v9_0.ast.Statement
+import org.opencypher.v9_0.expressions.SemanticDirection
+import org.opencypher.v9_0.expressions.SemanticDirection.{BOTH, INCOMING, OUTGOING}
 
-import scala.collection.mutable
+import java.time.{LocalDate, LocalDateTime, ZoneId}
+import java.util.Date
+
 
 class MyGraph extends GraphModel {
-  val _nodes: mutable.Map[MyId, MyNode] = mutable.Map()
 
-  val _relationships: mutable.Map[MyId, MyRelationship] = mutable.Map()
+  val xa = Transactor.fromDriverManager[IO](
+    "com.mysql.cj.jdbc.Driver", // driver classname
+    "jdbc:mysql://10.0.82.144:3306/LDBC1?serverTimezone=UTC&useUnicode=true&characterEncoding=utf8&useSSL=false", // connect URL (driver-specific)
+    "root", // user
+    "Hc1478963!" // password
+  )
 
-  private var _nodeId: Long = 0
-
-  private var _relationshipId: Long = 0
-
-  private def nodeId: MyId = {
-    _nodeId += 1
-    MyId(_nodeId)
+  def transDate(date: Date): LocalDate = {
+    val zoneid = ZoneId.systemDefault()
+    LocalDate.ofEpochDay(date.getTime/86400000)
   }
 
-  private def relationshipId: MyId = {
-    _relationshipId += 1
-    MyId(_relationshipId)
+  case class Person(id: Long, label: String, creationDate: Date,
+                    firstName: String, lastName: String, gender: String,
+                    birthday: Date, locationIP: String, browserUsed: String,
+                    languages: String, emails: String) {
+
+    def toNode: MyNode = MyNode(MyId(id), Seq(label).map(LynxNodeLabel), Map(
+      "id:ID" -> id,
+      "creationDate" -> transDate(creationDate),
+      "firstName"-> firstName,
+      "lastName" -> lastName,
+      "gender" -> gender,
+      "birthday" ->  transDate(birthday),
+      "locationIP" -> locationIP,
+      "browserUsed" -> browserUsed,
+      "languages" -> languages,
+      "emails" -> emails
+    ).map{ case (str, serializable) => LynxPropertyKey(str) -> LynxValue(serializable)})
   }
 
-  override def nodeAt(id: LynxId): Option[MyNode] = _nodes.get(id)
+  case class Place(id: Long, label: String, name: String,
+                   url: String, placeType: String) {
 
-  private def relationshipAt(id: LynxId): Option[MyRelationship] = _relationships.get(id)
+    def toNode: MyNode = MyNode(MyId(id), Seq(label).map(LynxNodeLabel), Map(
+      "id:ID" -> id,
+      "name" -> name,
+      "url" -> url,
+      "type" -> placeType,
+    ).map { case (str, serializable) => LynxPropertyKey(str) -> LynxValue(serializable) })
+  }
 
-  implicit def lynxId2myId(lynxId: LynxId): MyId = MyId(lynxId.value.asInstanceOf[Long])
+  case class Knows(id: Long, ty: String, creationDate: Date, start: Long, end: Long) {
+    def toRel: MyRelationship = MyRelationship(MyId(id), MyId(start), MyId(end),
+      Some(LynxRelationshipType(ty)), Map(
+        "creationDate" -> transDate(creationDate)
+      ).map{ case (str, serializable) => LynxPropertyKey(str) -> LynxValue(serializable)})
+  }
+
+  case class isLocatedIn(id: Long, ty: String, start: Long, end: Long, creationDate: Option[Date]) {
+    def toRel: MyRelationship =
+      if (creationDate.isEmpty) {
+        MyRelationship(MyId(id), MyId(start), MyId(end), Some(LynxRelationshipType(ty)), Map())
+      } else {
+        MyRelationship(MyId(id), MyId(start), MyId(end),
+          Some(LynxRelationshipType(ty)), Map(
+            "creationDate" -> transDate(creationDate.get)
+          ).map { case (str, serializable) => LynxPropertyKey(str) -> LynxValue(serializable) })
+      }
+  }
+
+  def getNodeFromTable(tableName: String, filter: Map[LynxPropertyKey, LynxValue]): Iterator[MyNode] = {
+    val head = fr"select * from " ++ Fragment.const(tableName)
+    val frs = filter.map{ case (key, value) => ("`" + key.toString() + "`", value match {
+      //TODO: Handle other cases such as Int
+      case o => o.toString
+    })}.map{ case (key, value) => Fragment.const(key) ++ fr"=$value"}.toSeq
+    val sql = head ++ Fragments.whereAnd(frs:_*)
+    //    println(sql)
+    tableName match {
+      case "Person" => sql.query[Person].to[List].transact(xa).unsafeRunSync().toIterator.map(_.toNode)
+      case "Place" => sql.query[Place].to[List].transact(xa).unsafeRunSync().toIterator.map(_.toNode)
+    }
+  }
+
+  def getRelationFromTable(tableName: String, filter: Map[LynxPropertyKey, LynxValue]): Iterator[PathTriple] = {
+    val head = fr"select * from " ++ Fragment.const(tableName)
+    val frs = filter.map{ case (key, value) => ("`" + key.toString() + "`", value match {
+      //TODO: Handle other cases such as Int
+      case o => o.toString
+    })}.map{case (key, value) => Fragment.const(key) ++ fr"=$value"}.toSeq
+    val sql = head ++ Fragments.whereAnd(frs:_*)
+    tableName match {
+      case "knows" => sql.query[Knows].to[List].transact(xa).unsafeRunSync().toIterator.map(_.toRel)
+        .map(rel => PathTriple(nodeAt(rel.startNodeId).get, rel, nodeAt(rel.endNodeId).get))
+      case "isLocatedIn" => sql.query[isLocatedIn].to[List].transact(xa).unsafeRunSync().toIterator.map(_.toRel)
+        .map(rel => PathTriple(nodeAt(rel.startNodeId).get, rel, nodeAt(rel.endNodeId).get))
+    }
+  }
 
   override def write: WriteTask = new WriteTask {
+    override def createElements[T](nodesInput: Seq[(String, NodeInput)], relationshipsInput: Seq[(String, RelationshipInput)], onCreated: (Seq[(String, LynxNode)], Seq[(String, LynxRelationship)]) => T): T = ???
 
-    val _nodesBuffer: mutable.Map[MyId, MyNode] = mutable.Map()
+    override def deleteRelations(ids: Iterator[LynxId]): Unit = ???
 
-    val _nodesToDelete: mutable.ArrayBuffer[MyId] = mutable.ArrayBuffer()
+    override def deleteNodes(ids: Seq[LynxId]): Unit = ???
 
-    val _relationshipsBuffer: mutable.Map[MyId, MyRelationship] = mutable.Map()
+    override def updateNode(lynxId: LynxId, labels: Seq[LynxNodeLabel], props: Map[LynxPropertyKey, LynxValue]): Option[LynxNode] = ???
 
-    val _relationshipsToDelete: mutable.ArrayBuffer[MyId] = mutable.ArrayBuffer()
+    override def updateRelationShip(lynxId: LynxId, props: Map[LynxPropertyKey, LynxValue]): Option[LynxRelationship] = ???
 
-    private def updateNodes(ids: Iterator[LynxId], update: MyNode => MyNode): Iterator[Option[LynxNode]] = {
-      ids.map { id =>
-        val updated = _nodesBuffer.get(id).orElse(nodeAt(id)).map(update)
-        updated.foreach(newNode => _nodesBuffer.update(newNode.id, newNode))
-        updated
-      }
-    }
+    override def setNodesProperties(nodeIds: Iterator[LynxId], data: Array[(LynxPropertyKey, Any)], cleanExistProperties: Boolean): Iterator[Option[LynxNode]] = ???
 
-    private def updateRelationships(ids: Iterator[LynxId], update: MyRelationship => MyRelationship): Iterator[Option[MyRelationship]] = {
-      ids.map { id =>
-        val updated = _relationshipsBuffer.get(id).orElse(relationshipAt(id)).map(update)
-        updated.foreach(newRel => _relationshipsBuffer.update(newRel.id, newRel))
-        updated
-      }
-    }
+    override def setNodesLabels(nodeIds: Iterator[LynxId], labels: Array[LynxNodeLabel]): Iterator[Option[LynxNode]] = ???
 
-    override def createElements[T](nodesInput: Seq[(String, NodeInput)],
-                                   relationshipsInput: Seq[(String, RelationshipInput)],
-                                   onCreated: (Seq[(String, LynxNode)], Seq[(String, LynxRelationship)]) => T): T = {
-      val nodesMap: Map[String, MyNode] = nodesInput.toMap
-        .map { case (valueName, input) => valueName -> MyNode(nodeId, input.labels, input.props.toMap) }
+    override def setRelationshipsProperties(relationshipIds: Iterator[LynxId], data: Array[(LynxPropertyKey, Any)]): Iterator[Option[LynxRelationship]] = ???
 
-      def localNodeRef(ref: NodeInputRef): MyId = ref match {
-        case StoredNodeInputRef(id) => id
-        case ContextualNodeInputRef(valueName) => nodesMap(valueName).id
-      }
+    override def setRelationshipsType(relationshipIds: Iterator[LynxId], typeName: LynxRelationshipType): Iterator[Option[LynxRelationship]] = ???
 
-      val relationshipsMap: Map[String, MyRelationship] = relationshipsInput.toMap.map {
-        case (valueName, input) =>
-          valueName -> MyRelationship(relationshipId, localNodeRef(input.startNodeRef),
-            localNodeRef(input.endNodeRef), input.types.headOption, input.props.toMap)
-      }
+    override def removeNodesProperties(nodeIds: Iterator[LynxId], data: Array[LynxPropertyKey]): Iterator[Option[LynxNode]] = ???
 
-      _nodesBuffer ++= nodesMap.map { case (_, node) => (node.id, node) }
-      _relationshipsBuffer ++= relationshipsMap.map { case (_, relationship) => (relationship.id, relationship) }
-      onCreated(nodesMap.toSeq, relationshipsMap.toSeq)
-    }
+    override def removeNodesLabels(nodeIds: Iterator[LynxId], labels: Array[LynxNodeLabel]): Iterator[Option[LynxNode]] = ???
 
-    override def deleteRelations(ids: Iterator[LynxId]): Unit = ids.foreach { id =>
-      _relationshipsBuffer.remove(id)
-      _relationshipsToDelete += id
-    }
+    override def removeRelationshipsProperties(relationshipIds: Iterator[LynxId], data: Array[LynxPropertyKey]): Iterator[Option[LynxRelationship]] = ???
 
-    override def deleteNodes(ids: Seq[LynxId]): Unit = ids.foreach { id =>
-      _nodesBuffer.remove(id)
-      _nodesToDelete += id
-    }
+    override def removeRelationshipsType(relationshipIds: Iterator[LynxId], typeName: LynxRelationshipType): Iterator[Option[LynxRelationship]] = ???
 
-    override def setNodesProperties(nodeIds: Iterator[LynxId], data: Array[(LynxPropertyKey, Any)], cleanExistProperties: Boolean): Iterator[Option[LynxNode]] =
-      updateNodes(nodeIds, old => MyNode(old.id, old.labels, if (cleanExistProperties) Map.empty else old.props ++ data.toMap.mapValues(LynxValue.apply)))
-
-    override def setNodesLabels(nodeIds: Iterator[LynxId], labels: Array[LynxNodeLabel]): Iterator[Option[LynxNode]] =
-      updateNodes(nodeIds, old => MyNode(old.id, (old.labels ++ labels.toSeq).distinct, old.props))
-
-    override def setRelationshipsProperties(relationshipIds: Iterator[LynxId], data: Array[(LynxPropertyKey, Any)]): Iterator[Option[LynxRelationship]] =
-      updateRelationships(relationshipIds, old => MyRelationship(old.id, old.startNodeId, old.endNodeId, old.relationType, data.toMap.mapValues(LynxValue.apply).toMap))
-
-    override def setRelationshipsType(relationshipIds: Iterator[LynxId], typeName: LynxRelationshipType): Iterator[Option[LynxRelationship]] =
-      updateRelationships(relationshipIds, old => MyRelationship(old.id, old.startNodeId, old.endNodeId, Some(typeName), old.props))
-
-    override def removeNodesProperties(nodeIds: Iterator[LynxId], data: Array[LynxPropertyKey]): Iterator[Option[LynxNode]] =
-      updateNodes(nodeIds, old => MyNode(old.id, old.labels, old.props.filterNot { case (k, v) => data.contains(k) }))
-
-    override def removeNodesLabels(nodeIds: Iterator[LynxId], labels: Array[LynxNodeLabel]): Iterator[Option[LynxNode]] =
-      updateNodes(nodeIds, old => MyNode(old.id, old.labels.filterNot(labels.contains), old.props))
-
-    override def removeRelationshipsProperties(relationshipIds: Iterator[LynxId], data: Array[LynxPropertyKey]): Iterator[Option[LynxRelationship]] =
-      updateRelationships(relationshipIds, old => MyRelationship(old.id, old.startNodeId, old.endNodeId, old.relationType, old.props.filterNot { case (k, v) => data.contains(k) }))
-
-    override def removeRelationshipsType(relationshipIds: Iterator[LynxId], typeName: LynxRelationshipType): Iterator[Option[LynxRelationship]] =
-      updateRelationships(relationshipIds, old => MyRelationship(old.id, old.startNodeId, old.endNodeId, None, old.props))
-
-    override def commit: Boolean = {
-      _nodes ++= _nodesBuffer
-      _nodes --= _nodesToDelete
-      _relationships ++= _relationshipsBuffer
-      _relationships --= _relationshipsToDelete
-      _nodesBuffer.clear()
-      _nodesToDelete.clear()
-      _relationshipsBuffer.clear()
-      _relationshipsToDelete.clear()
-      true
-    }
+    override def commit: Boolean = {true}
   }
 
-  override def nodes(): Iterator[LynxNode] = _nodes.valuesIterator
+  override def nodeAt(id: LynxId): Option[MyNode] = {
+    id.toString().charAt(0) match {
+      case '2' =>
+        sql"select * from Place where `id:ID` = ${id.toLynxInteger.value}"
+          .query[Place].option.transact(xa).unsafeRunSync().map(_.toNode)
+      case '3' =>
+        sql"select * from Person where `id:ID` = ${id.toLynxInteger.value}"
+          .query[Person].option.transact(xa).unsafeRunSync().map(_.toNode)
+      case _ => throw new RuntimeException("node table not implemented")
+    }
+//    sql"select * from Person where `id:ID` = 300000000008100"
+//      .query[Person].option.transact(xa).unsafeRunSync().map(_.toNode)
+  }
 
-  override def relationships(): Iterator[PathTriple] =
-    _relationships.valuesIterator.map(rel => PathTriple(nodeAt(rel.startNodeId).get, rel, nodeAt(rel.endNodeId).get))
+  override def nodes(): Iterator[MyNode] = {
+    val node1 = sql"SELECT * FROM Person"
+      .query[Person].to[List].transact(xa).unsafeRunSync().toIterator.map(_.toNode)
+    val node2 = sql"SELECT * FROM Place"
+      .query[Place].to[List].transact(xa).unsafeRunSync().toIterator.map(_.toNode)
+
+    node1 ++ node2
+  }
+
+  override def nodes(nodeFilter: NodeFilter): Iterator[MyNode] = nodeFilter.labels match {
+    case Seq(LynxNodeLabel("person")) => getNodeFromTable("Person", nodeFilter.properties)
+    case Seq(LynxNodeLabel("place")) => getNodeFromTable("Place", nodeFilter.properties)
+    case _ => throw new RuntimeException("...")
+  }
+
+  override def relationships(): Iterator[PathTriple] = {
+    val rel1 = sql"SELECT * FROM knows"
+      .query[Knows].to[List].transact(xa).unsafeRunSync().toIterator.map(_.toRel)
+      .map(rel => PathTriple(nodeAt(rel.startNodeId).get, rel, nodeAt(rel.endNodeId).get))
+
+    val rel2 = sql"SELECT * FROM isLocatedIn"
+      .query[isLocatedIn].to[List].transact(xa).unsafeRunSync().toIterator.map(_.toRel)
+      .map(rel => PathTriple(nodeAt(rel.startNodeId).get, rel, nodeAt(rel.endNodeId).get))
+
+    rel1 ++ rel2
+  }
+
+  override def relationships(relationshipFilter: RelationshipFilter): Iterator[PathTriple] = {
+    val relType: String = relationshipFilter.types(0).toString()
+    getRelationFromTable(relType, relationshipFilter.properties)
+  }
+
+  //TODO: Revise this to adapt other relationships
+  override def expand(id: LynxId, filter: RelationshipFilter, direction: SemanticDirection): Iterator[PathTriple] = filter.types match {
+    case Seq(LynxRelationshipType("knows")) => {
+      //      println(s"SELECT * FROM Person,knows WHERE Person.id = knows.`:END_ID` and knows.`:START_ID` = ${id.toLynxInteger.value}")
+      nodeAt(id).map{ start =>
+        val out = fr"Person.`id:ID` = knows.`:END_ID` and knows.`:START_ID` = ${id.toLynxInteger.value}"
+        val in  = fr"Person.`id:ID` = knows.`:START_ID` and knows.`:END_ID` = ${id.toLynxInteger.value}"
+        val sql = fr"SELECT * FROM Person,knows  " ++ (direction match {
+          case OUTGOING => Fragments.whereAnd(out)
+          case INCOMING => Fragments.whereAnd(in)
+          case BOTH => Fragments.whereOr(out,in)
+        })
+        //        println(sql)
+        sql.query[(Person, Knows)].to[List].transact(xa).unsafeRunSync().toIterator
+          .map{ case (person, knows) => PathTriple(start, knows.toRel, person.toNode)}
+      }.getOrElse(Iterator.empty)
+    }
+
+    case Seq(LynxRelationshipType("isLocatedIn")) => {
+      nodeAt(id).map{ current =>
+        val out = fr"Place.`id:ID` = isLocatedIn.`:END_ID` and isLocatedIn.`:START_ID` = ${id.toLynxInteger.value}"
+        val in = fr"Person.`id:ID` = isLocatedIn.`:START_ID` and isLocatedIn.`:END_ID` = ${id.toLynxInteger.value}"
+        direction match {
+          //current is a person
+          case OUTGOING =>
+            val sql = fr"SELECT * FROM Place, isLocatedIn" ++ Fragments.whereAnd(out)
+            sql.query[(Place, isLocatedIn)].to[List].transact(xa).unsafeRunSync().toIterator
+              .map { case (place, islocatedin) => PathTriple(current, islocatedin.toRel, place.toNode) }
+          //current is a place
+          case INCOMING =>
+            val sql = fr"SELECT * FROM Person, isLocatedIn" ++ Fragments.whereAnd(in)
+            sql.query[(Person, isLocatedIn)].to[List].transact(xa).unsafeRunSync().toIterator
+              .map { case (person, isLocatedIn) => PathTriple(current, isLocatedIn.toRel, person.toNode) }
+          case BOTH => throw new RuntimeException("both not implemented")
+        }
+      }.getOrElse(Iterator.empty)
+    }
+
+    case _ => throw new RuntimeException("..")
+  }
 
   private val runner = new CypherRunner(this)
 
   def run(query: String, param: Map[String, Any] = Map.empty[String, Any]): LynxResult = runner.run(query, param)
+
 }

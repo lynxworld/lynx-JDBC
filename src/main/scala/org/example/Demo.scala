@@ -1,3 +1,4 @@
+/*
 package org.example
 
 import cats.effect.IO
@@ -43,7 +44,7 @@ class Demo extends GraphModel {
                     birthday: Date, locationIP: String, browserUsed: String,
                     languages: String, emails: String) {
 
-    def toNode: DemoNode = DemoNode(DemoId(id), Seq(label).map(LynxNodeLabel), Map(
+    def toNode: MyNode = MyNode(MyId(id), Seq(label).map(LynxNodeLabel), Map(
       "id" -> id,
       "creationDate" -> transDate(creationDate),
       "firstName"-> firstName,
@@ -58,13 +59,13 @@ class Demo extends GraphModel {
   }
 
   case class Knows(id: Long, ty: String, creationDate: Date, start: Long, end: Long) {
-    def toRel: DemoRelationship = DemoRelationship(DemoId(id), DemoId(start), DemoId(end),
+    def toRel: MyRelationship = MyRelationship(MyId(id), MyId(start), MyId(end),
       Some(LynxRelationshipType(ty)), Map(
       "creationDate" -> transDate(creationDate)
     ).map{ case (str, serializable) => LynxPropertyKey(str) -> LynxValue(serializable)})
   }
 
-  def getNodeFromTable(tableName: String, filter: Map[LynxPropertyKey, LynxValue]): Iterator[DemoNode] = {
+  def getNodeFromTable(tableName: String, filter: Map[LynxPropertyKey, LynxValue]): Iterator[MyNode] = {
     val head = fr"select * from " ++ Fragment.const(tableName)
     val frs = filter.map{ case (key, value) => (key.toString(), value match {
 //      case LynxInteger(v) => v
@@ -105,15 +106,15 @@ class Demo extends GraphModel {
     override def commit: Boolean = {true}
   }
 
-  override def nodeAt(id: LynxId): Option[DemoNode] = {
+  override def nodeAt(id: LynxId): Option[MyNode] = {
 //    println(s"select * from Person where id = ${id}")
     sql"select * from Person where id = ${id.toLynxInteger.value}"
       .query[Person].option.transact(xa).unsafeRunSync().map(_.toNode)
   }
 
-  override def nodes(): Iterator[DemoNode] = ???
+  override def nodes(): Iterator[MyNode] = ???
 
-  override def nodes(nodeFilter: NodeFilter): Iterator[DemoNode] = nodeFilter.labels match {
+  override def nodes(nodeFilter: NodeFilter): Iterator[MyNode] = nodeFilter.labels match {
     case Seq(LynxNodeLabel("Person")) => getNodeFromTable("Person", nodeFilter.properties)
     case _ => throw new RuntimeException("...")
   }
@@ -148,22 +149,22 @@ class Demo extends GraphModel {
 
 }
 
-case class DemoId(value: Long) extends LynxId {
+case class MyId(value: Long) extends LynxId {
   override def toLynxInteger: LynxInteger = LynxInteger(value)
 
   override def toString: String = value.toString
 }
 
-case class DemoNode(id: DemoId, labels: Seq[LynxNodeLabel], props: Map[LynxPropertyKey, LynxValue]) extends LynxNode {
+case class MyNode(id: MyId, labels: Seq[LynxNodeLabel], props: Map[LynxPropertyKey, LynxValue]) extends LynxNode {
   override def property(propertyKey: LynxPropertyKey): Option[LynxValue] = props.get(propertyKey)
 
   override def keys: Seq[LynxPropertyKey] = props.keys.toSeq
 
 }
 
-case class DemoRelationship(id: DemoId,
-                            startNodeId: DemoId,
-                            endNodeId: DemoId,
+case class MyRelationship(id: MyId,
+                            startNodeId: MyId,
+                            endNodeId: MyId,
                             relationType: Option[LynxRelationshipType],
                             props: Map[LynxPropertyKey, LynxValue]) extends LynxRelationship {
   override def property(propertyKey: LynxPropertyKey): Option[LynxValue] = props.get(propertyKey)
@@ -230,4 +231,4 @@ class DemoRunner(model: GraphModel) extends CypherRunner(model: GraphModel){
       }
     }
   }
-}
+}*/
