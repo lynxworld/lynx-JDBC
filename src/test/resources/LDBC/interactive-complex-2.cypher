@@ -5,14 +5,14 @@
   1287230400000 AS maxDate
 }
 */
-MATCH (:Person {id: $personId })-[:KNOWS]-(friend:Person)<-[:HAS_CREATOR]-(message:Message)
+MATCH (:Person {`id:ID`: $personId })-[:knows]-(friend:Person)<-[:hasCreator]-(message:Comment)
     WHERE message.creationDate <= $maxDate
     RETURN
-        friend.id AS personId,
+        friend.`id:ID` AS personId,
         friend.firstName AS personFirstName,
         friend.lastName AS personLastName,
-        message.id AS postOrCommentId,
-        coalesce(message.content,message.imageFile) AS postOrCommentContent,
+        message.`id:ID` AS postOrCommentId,
+        coalesce(message.content,message.creationDate) AS postOrCommentContent,
         message.creationDate AS postOrCommentCreationDate
     ORDER BY
         postOrCommentCreationDate DESC,

@@ -8,19 +8,19 @@
   1277812800000 AS endDate
 }
 */
-MATCH (countryX:Country {name: $countryXName }),
-      (countryY:Country {name: $countryYName }),
-      (person:Person {id: $personId })
+MATCH (countryX:Place {name: $countryXName }),
+      (countryY:Place {name: $countryYName }),
+      (person:Person {`id:ID`: $personId })
 WITH person, countryX, countryY
 LIMIT 1
-MATCH (city:City)-[:IS_PART_OF]->(country:Country)
+MATCH (city:Place {`type`: City}) -[:isPartOf]-> (country:Place {`type`: Country})
 WHERE country IN [countryX, countryY]
 WITH person, countryX, countryY, collect(city) AS cities
-MATCH (person)-[:KNOWS*1..2]-(friend)-[:IS_LOCATED_IN]->(city)
+MATCH (person)-[:knows*1..2]-(friend)-[:isLocatedIn]->(city)
 WHERE NOT person=friend AND NOT city IN cities
 WITH DISTINCT friend, countryX, countryY
-MATCH (friend)<-[:HAS_CREATOR]-(message),
-      (message)-[:IS_LOCATED_IN]->(country)
+MATCH (friend)<-[:hasCreator]-(message),
+      (message)-[:isLocatedIn]->(country)
 WHERE $endDate > message.creationDate >= $startDate AND
       country IN [countryX, countryY]
 WITH friend,
@@ -28,7 +28,7 @@ WITH friend,
      CASE WHEN country=countryY THEN 1 ELSE 0 END AS messageY
 WITH friend, sum(messageX) AS xCount, sum(messageY) AS yCount
 WHERE xCount>0 AND yCount>0
-RETURN friend.id AS friendId,
+RETURN friend.`id:ID` AS friendId,
        friend.firstName AS friendFirstName,
        friend.lastName AS friendLastName,
        xCount,

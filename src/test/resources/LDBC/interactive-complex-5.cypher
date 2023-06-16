@@ -5,17 +5,17 @@
   1288612800000 AS minDate
 }
 */
-MATCH (person:Person { id: $personId })-[:KNOWS*1..2]-(friend)
+MATCH (person:Person { `id:ID`: $personId })-[:knows*1..2]-(friend)
 WHERE
     NOT person=friend
 WITH DISTINCT friend
-MATCH (friend)<-[membership:HAS_MEMBER]-(forum)
+MATCH (friend)<-[membership:hasMember]-(forum)
 WHERE
-    membership.joinDate > $minDate
+    membership.creationDate > $minDate
 WITH
     forum,
     collect(friend) AS friends
-OPTIONAL MATCH (friend)<-[:HAS_CREATOR]-(post)<-[:CONTAINER_OF]-(forum)
+OPTIONAL MATCH (friend)<-[:hasCreator]-(post)<-[:containerOf]-(forum)
 WHERE
     friend IN friends
 WITH
@@ -26,5 +26,5 @@ RETURN
     postCount
 ORDER BY
     postCount DESC,
-    forum.id ASC
+    forum.`id:ID` ASC
 LIMIT 20

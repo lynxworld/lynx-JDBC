@@ -6,17 +6,17 @@
 }
 */
 MATCH (knownTag:Tag { name: $tagName })
-WITH knownTag.id as knownTagId
+WITH knownTag.`id:ID` as knownTagId
 
-MATCH (person:Person { id: $personId })-[:KNOWS*1..2]-(friend)
+MATCH (person:Person { `id:ID`: $personId })-[:knows*1..2]-(friend)
 WHERE NOT person=friend
 WITH
     knownTagId,
     collect(distinct friend) as friends
 UNWIND friends as f
-    MATCH (f)<-[:HAS_CREATOR]-(post:Post),
-          (post)-[:HAS_TAG]->(t:Tag{id: knownTagId}),
-          (post)-[:HAS_TAG]->(tag:Tag)
+    MATCH (f)<-[:hasCreator]-(post:Post),
+          (post)-[:hasTag]->(t:Tag{`id:ID`: knownTagId}),
+          (post)-[:hasTag]->(tag:Tag)
     WHERE NOT t = tag
     WITH
         tag.name as tagName,

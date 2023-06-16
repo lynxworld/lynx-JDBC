@@ -6,20 +6,39 @@
   1277856000000 AS endDate
 }
 */
-MATCH (person:Person {id: $personId })-[:KNOWS]-(friend:Person),
-      (friend)<-[:HAS_CREATOR]-(post:Post)-[:HAS_TAG]->(tag)
+
+MATCH (person:Person {`id:ID`: $personId })-[:knows]-(friend:Person),
+      (friend)<-[:hasCreator]-(post:Post)-[:hasTag]->(tag)
 WITH DISTINCT tag, post
 WITH tag,
      CASE
        WHEN $endDate > post.creationDate >= $startDate THEN 1
        ELSE 0
-     END AS valid,
+       END AS valid,
      CASE
        WHEN $startDate > post.creationDate THEN 1
        ELSE 0
-     END AS inValid
+       END AS inValid
 WITH tag, sum(valid) AS postCount, sum(inValid) AS inValidPostCount
-WHERE postCount>0 AND inValidPostCount=0
+  WHERE postCount>0 AND inValidPostCount=0
 RETURN tag.name AS tagName, postCount
-ORDER BY postCount DESC, tagName ASC
-LIMIT 10
+  ORDER BY postCount DESC, tagName ASC
+  LIMIT 10
+
+//MATCH (person:Person {`id:ID`: $personId })-[:knows]-(friend:Person),
+//      (friend)<-[:hasCreator]-(post:Post)-[:hasTag]->(tag)
+//WITH DISTINCT tag, post
+//WITH tag,
+//     CASE
+//       WHEN $endDate > post.creationDate >= $startDate THEN 1
+//       ELSE 0
+//     END AS valid,
+//     CASE
+//       WHEN $startDate > post.creationDate THEN 1
+//       ELSE 0
+//     END AS inValid
+//WITH tag, sum(valid) AS postCount, sum(inValid) AS inValidPostCount
+//WHERE postCount>0 AND inValidPostCount=0
+//RETURN tag.name AS tagName, postCount
+//ORDER BY postCount DESC, tagName ASC
+//LIMIT 10

@@ -2,8 +2,8 @@
 /*
 :param messageId: 206158431836
  */
-MATCH (m:Message {id:  $messageId })-[:HAS_CREATOR]->(p:Person)
+MATCH (m:Comment {`id:ID`:  $messageId })-[:hasCreator]->(p:Person)
 RETURN
-    p.id AS personId,
+    p.`id:ID` AS personId,
     p.firstName AS firstName,
     p.lastName AS lastName

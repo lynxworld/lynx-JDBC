@@ -5,26 +5,26 @@
   "Jose" AS firstName
 }
 */
-MATCH (p:Person {id: $personId}), (friend:Person {firstName: $firstName})
+MATCH (p:Person {`id:ID`: $personId}), (friend:Person {firstName: $firstName})
        WHERE NOT p=friend
        WITH p, friend
-       MATCH path = shortestPath((p)-[:KNOWS*1..3]-(friend))
+       MATCH path = shortestPath((p)-[:knows*1..3]-(friend))
        WITH min(length(path)) AS distance, friend
 ORDER BY
     distance ASC,
     friend.lastName ASC,
-    toInteger(friend.id) ASC
+    toInteger(friend.`id:ID`) ASC
 LIMIT 20
 
-MATCH (friend)-[:IS_LOCATED_IN]->(friendCity:City)
-OPTIONAL MATCH (friend)-[studyAt:STUDY_AT]->(uni:University)-[:IS_LOCATED_IN]->(uniCity:City)
+MATCH (friend)-[:isLocatedIn]->(friendCity:Place)
+OPTIONAL MATCH (friend)-[studyAt:studyAt]->(uni:Place)-[:isLocatedIn]->(uniCity:Place)
 WITH friend, collect(
     CASE uni.name
         WHEN null THEN null
         ELSE [uni.name, studyAt.classYear, uniCity.name]
     END ) AS unis, friendCity, distance
 
-OPTIONAL MATCH (friend)-[workAt:WORK_AT]->(company:Company)-[:IS_LOCATED_IN]->(companyCountry:Country)
+OPTIONAL MATCH (friend)-[workAt:workAt]->(company:Organisation)-[:isLocatedIn]->(companyCountry:Place)
 WITH friend, collect(
     CASE company.name
         WHEN null THEN null
@@ -32,7 +32,7 @@ WITH friend, collect(
     END ) AS companies, unis, friendCity, distance
 
 RETURN
-    friend.id AS friendId,
+    friend.`id:ID` AS friendId,
     friend.lastName AS friendLastName,
     distance AS distanceFromPerson,
     friend.birthday AS friendBirthday,

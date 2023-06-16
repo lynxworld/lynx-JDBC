@@ -2,19 +2,19 @@
 /*
 :param personId: 4398046511268
 */
-MATCH (person:Person {id: $personId})<-[:HAS_CREATOR]-(message:Message)<-[like:LIKES]-(liker:Person)
+MATCH (person:Person {`id:ID`: $personId})<-[:hasCreator]-(message:Message)<-[like:likes]-(liker:Person)
     WITH liker, message, like.creationDate AS likeTime, person
-    ORDER BY likeTime DESC, toInteger(message.id) ASC
+    ORDER BY likeTime DESC, toInteger(message.`id:ID`) ASC
     WITH liker, head(collect({msg: message, likeTime: likeTime})) AS latestLike, person
 RETURN
-    liker.id AS personId,
+    liker.`id:ID` AS personId,
     liker.firstName AS personFirstName,
     liker.lastName AS personLastName,
     latestLike.likeTime AS likeCreationDate,
-    latestLike.msg.id AS commentOrPostId,
-    coalesce(latestLike.msg.content, latestLike.msg.imageFile) AS commentOrPostContent,
+    latestLike.msg.`id:ID` AS commentOrPostId,
+    coalesce(latestLike.msg.content, latestLike.msg.creationDate) AS commentOrPostContent,
     toInteger(floor(toFloat(latestLike.likeTime - latestLike.msg.creationDate)/1000.0)/60.0) AS minutesLatency,
-    not((liker)-[:KNOWS]-(person)) AS isNew
+    not((liker)-[:knows]-(person)) AS isNew
 ORDER BY
     likeCreationDate DESC,
     toInteger(personId) ASC
