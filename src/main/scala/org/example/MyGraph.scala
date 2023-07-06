@@ -1,3 +1,4 @@
+//Scala-sdk-2.12.17
 package org.example
 
 import cats.effect.IO
@@ -78,10 +79,10 @@ class MyGraph extends GraphModel {
       val columnValue =
         try {
           columnType match {
+            case "String" => LynxString(row.getString(i + 1))
             case "BIGINT" => LynxValue(row.getLong(i + 1))
             case "INT" => LynxValue(row.getInt(i + 1))
             case "Date" => LynxDate(transDate(row.getDate(i + 1)))
-            case "String" => LynxString(row.getString(i + 1))
             case _ => LynxString(row.getString(i + 1))
           }
         } catch {
@@ -95,6 +96,7 @@ class MyGraph extends GraphModel {
     val id = MyId(row.getLong("REL_ID"))
     val startId = MyId(row.getLong(":START_ID"))
     val endId = MyId(row.getLong(":END_ID"))
+
     MyRelationship(id, startId, endId, Some(LynxRelationshipType(relName)), propertyMap)
   }
 
@@ -133,6 +135,17 @@ class MyGraph extends GraphModel {
     "workAt" -> Array(("REL_ID", "BIGINT"), (":TYPE", "String"), ("creationDate", "Date"), (":START_ID", "BIGINT"), (":END_ID", "BIGINT"), ("workFrom", "INT"))
   )
 
+  val relMapping = Map(
+    "isLocatedIn" -> (Array("Person", "Comment", "Post", "Organisation"), Array("Place")),
+    "replyOf" -> (Array("Comment"), Array("Comment", "Post")),   "containerOf" -> (Array("Forum"), Array("Post")),
+    "hasCreator" -> (Array("Comment", "Post"), Array("Person")), "hasInterest" -> (Array("Person"), Array("Tag")),
+    "workAt" -> (Array("Person"), Array("Organisation")),        "hasModerator" -> (Array("Forum"), Array("Person")),
+    "hasTag" -> (Array("Comment, Post, Forum"), Array("Tag")),   "hasType" -> (Array("Tag"), Array("Tagclass")),
+    "isSubclassOf" -> (Array("Tagclass"), Array("Tagclass")),    "isPartOf" -> (Array("Place"), Array("Place")),
+    "likes" -> (Array("Person"), Array("Comment", "Post")),      "knows" -> (Array("Person"), Array("Person")),
+    "studyAt" -> (Array("Person"), Array("Organisation")),       "hasMember" -> (Array("Forum"), Array("Person")),
+  )
+
   override def write: WriteTask = new WriteTask {
     override def createElements[T](nodesInput: Seq[(String, NodeInput)], relationshipsInput: Seq[(String, RelationshipInput)], onCreated: (Seq[(String, LynxNode)], Seq[(String, LynxRelationship)]) => T): T = ???
 
@@ -163,7 +176,7 @@ class MyGraph extends GraphModel {
     override def commit: Boolean = {true}
   }
 
-  override def nodeAt(id: LynxId): Option[MyNode] = {
+  override def nodeAt(id: LynxId): Option[MyNode] = ??? /*{
     println("nodeAt()")
     for (tableName <- nodeSchema.keys) {
       val statement = connection.createStatement
@@ -176,6 +189,30 @@ class MyGraph extends GraphModel {
     }
     println("nodeAt() finished")
     return None
+  }*/
+
+  def myNodeAt(id: LynxId, tableList:Array[String]): Option[MyNode] = {
+    println("myNodeAt()")
+    val startTime1 = System.currentTimeMillis()
+
+    for (tableName <- tableList) {
+      val statement = connection.createStatement
+      val sql = s"select * from ${tableName} where `id:ID` = ${id.toLynxInteger.value}"
+
+      println(sql)
+
+      val startTime2 = System.currentTimeMillis()
+      val row = statement.executeQuery(sql)
+      println("myNodeAt() SQL used: " + (System.currentTimeMillis() - startTime2) + " ms")
+
+      if (row.next()) {
+        val result = rowToNode(row, tableName, nodeSchema(tableName))
+        // println("myNodeAt() finished")
+        println("myNodeAt() totally used: " + (System.currentTimeMillis() - startTime1) + " ms")
+        return Some(result)
+      }
+    }
+    None
   }
 
   override def nodes(): Iterator[MyNode] = {
@@ -192,10 +229,11 @@ class MyGraph extends GraphModel {
 
   override def nodes(nodeFilter: NodeFilter): Iterator[MyNode] = {
     println("nodes(nodeFilter)")
+    // val startTime1 = System.currentTimeMillis()
     if (nodeFilter.labels.size == 0 && nodeFilter.properties.size == 0) {
       return nodes()
     }
-  //TODO: 是否需要考虑 (p {`id:ID`: $personId} )的情况 (label长度为0但properties长度不为0)
+
     val tableName = nodeFilter.labels(0).toString()
     val filter = nodeFilter.properties
 
@@ -212,14 +250,18 @@ class MyGraph extends GraphModel {
       }
     }
     println(sql)
+
     val statement = connection.createStatement
+    val startTime2 = System.currentTimeMillis()
     val data = statement.executeQuery(sql)
+    println("nodes(nodeFilter) SQL used: " + (System.currentTimeMillis() - startTime2) + " ms")
     // val metadata = data.getMetaData
 
     val result = Iterator.continually(data).takeWhile(_.next())
       .map { resultSet => rowToNode(resultSet, tableName, nodeSchema(tableName)) }
     //      .map{ resultSet => rowToNode(resultSet, metadata)}
-    println("nodes(nodeFilter) finished")
+    // println("nodes(nodeFilter) finished")
+    // println("nodes(nodeFilter) totally used: " + (System.currentTimeMillis() - startTime2) + " ms")
     result
   }
 
@@ -230,8 +272,8 @@ class MyGraph extends GraphModel {
       val data = statement.executeQuery(s"select * from ${tableName}")
       Iterator.continually(data).takeWhile(_.next())
         .map { resultSet =>
-          val startNode = nodeAt(MyId(resultSet.getLong(":START_ID"))).get
-          val endNode = nodeAt(MyId(resultSet.getLong(":END_ID"))).get
+          val startNode = myNodeAt(MyId(resultSet.getLong(":START_ID")), relMapping(tableName)._1).get
+          val endNode = myNodeAt(MyId(resultSet.getLong(":END_ID")), relMapping(tableName)._2).get
           val rel = rowToRel(resultSet, tableName, relSchema(tableName))
 
           PathTriple(startNode, rel, endNode)
@@ -260,13 +302,15 @@ class MyGraph extends GraphModel {
 
     println(sql)
     val statement = connection.createStatement
+    val startTime1 = System.currentTimeMillis()
     val data = statement.executeQuery(sql)
+    println("rel(relFilter) SQL used " + (System.currentTimeMillis() - startTime1) + " ms")
     // val metadata = data.getMetaData
 
     val result = Iterator.continually(data).takeWhile(_.next())
       .map { resultSet =>
-        val startNode = nodeAt(MyId(resultSet.getLong(":START_ID"))).get
-        val endNode = nodeAt(MyId(resultSet.getLong(":END_ID"))).get
+        val startNode = myNodeAt(MyId(resultSet.getLong(":START_ID")), relMapping(tableName)._1).get
+        val endNode = myNodeAt(MyId(resultSet.getLong(":END_ID")), relMapping(tableName)._2).get
         val rel = rowToRel(resultSet, tableName, relSchema(tableName))
 
         PathTriple(startNode, rel, endNode)
@@ -277,16 +321,21 @@ class MyGraph extends GraphModel {
     result
   }
 
-  override def expand(id: LynxId, filter: RelationshipFilter, direction: SemanticDirection): Iterator[PathTriple] = {
+  override def expand(id: LynxId,                                                                                                                           filter: RelationshipFilter, direction: SemanticDirection): Iterator[PathTriple] = {
     println("expand()")
-    //TODO: 求证这个if是否正确
     if (direction == BOTH) {
       return expand(id, filter, OUTGOING) ++ expand(id, filter, INCOMING)
     }
 
     val tableName = filter.types(0).toString()
-    val startNode = nodeAt(id).get
-    // val startlLabel = startNode.labels
+    val startNode = direction match {
+      case OUTGOING => myNodeAt(id, relMapping(tableName)._1)
+      case INCOMING => myNodeAt(id, relMapping(tableName)._2)
+    }
+    if (startNode == None) {
+      return Iterator.empty
+    }
+
     val relType = filter.types(0).toString()
     var sql = s"select * from ${relType}"
     direction match {
@@ -300,31 +349,74 @@ class MyGraph extends GraphModel {
     for (i <- 0 until conditions.length) {
         sql = sql + " and " + conditions(i)
     }
+
     println(sql)
+
     val statement = connection.createStatement
+    val startTime1 = System.currentTimeMillis()
     val data = statement.executeQuery(sql)
+    println("expand() SQL used: " + (System.currentTimeMillis() - startTime1) + " ms")
     // val metadata = data.getMetaData
 
     val result = Iterator.continually(data).takeWhile(_.next())
     .map { resultSet =>
       val endNode = direction match {
-        case OUTGOING => nodeAt(MyId(resultSet.getLong(":END_ID"))).get
-        case INCOMING => nodeAt(MyId(resultSet.getLong(":START_ID"))).get
+        case OUTGOING => myNodeAt(MyId(resultSet.getLong(":END_ID")), relMapping(tableName)._2).get
+        case INCOMING => myNodeAt(MyId(resultSet.getLong(":START_ID")), relMapping(tableName)._1).get
       }
 
-      PathTriple(startNode, rowToRel(resultSet, relType, relSchema(relType)), endNode)
+      PathTriple(startNode.get, rowToRel(resultSet, relType, relSchema(relType)), endNode)
     }
-    print("expand() finished")
+
+    // println("expand() finished")
+    println("expand() totally used: " + (System.currentTimeMillis() - startTime1) + " ms")
     result
   }
 
   override def expand(nodeId: LynxId, filter: RelationshipFilter,
                       endNodeFilter: NodeFilter, direction: SemanticDirection): Iterator[PathTriple] = {
-    println("expand(endNodeFilter)")
+    // println("expand(endNodeFilter)")
     val result = expand(nodeId, filter, direction).filter { pathTriple =>
       endNodeFilter.matches(pathTriple.endNode)
     }
-    println("expand(endNodeFilter) finished")
+    // println("expand(endNodeFilter) finished")
+    result
+  }
+
+  override def extendPath(path: LynxPath, relationshipFilter: RelationshipFilter, direction: SemanticDirection, steps: Int): Iterator[LynxPath] = {
+    // println("extendPath() " + path.isEmpty + " " + steps)
+    if (path.isEmpty || steps <= 0) return Iterator(path)
+    Iterator(path) ++
+      expand(path.endNode.get.id, relationshipFilter, direction)
+        .filterNot(tri => path.nodeIds.contains(tri.endNode.id))
+        .map(_.toLynxPath)
+        .map(_.connectLeft(path)).flatMap(p => extendPath(p, relationshipFilter, direction, steps - 1))
+  }
+
+  override def paths(startNodeFilter: NodeFilter, relationshipFilter: RelationshipFilter, endNodeFilter: NodeFilter,
+            direction: SemanticDirection, upperLimit: Int, lowerLimit: Int): Iterator[LynxPath] = {
+    // println("paths()" + upperLimit + " " + lowerLimit)
+    //TODO: 如果filter是None，直接 select * from Rel
+    // 先不考虑多跳的情况
+//    if (upperLimit != 1 || lowerLimit != 1) {
+//      throw new RuntimeException("Upper limit or lower limit not support")
+//    }
+//    if (startNodeFilter.properties.size == 0) {
+//      val result = relationships(relationshipFilter).map(_.toLynxPath)
+//                      .filter(_.endNode.forall(endNodeFilter.matches))
+//      println("paths() finished 2")
+//      return result
+//    }
+
+    val originStations = nodes(startNodeFilter)
+    val result = originStations.flatMap { originStation =>
+       val firstStop = expandNonStop(originStation, relationshipFilter, direction, lowerLimit)
+       val leftSteps = Math.min(upperLimit, 100) - lowerLimit
+       firstStop.flatMap(p => extendPath(p, relationshipFilter, direction, leftSteps))
+      // expandNonStop(originStation, relationshipFilter, direction, lowerLimit)
+    }.filter(_.endNode.forall(endNodeFilter.matches))
+
+    // println("paths() finished 1")
     result
   }
 
@@ -333,3 +425,5 @@ class MyGraph extends GraphModel {
   def run(query: String, param: Map[String, Any] = Map.empty[String, Any]): LynxResult = runner.run(query, param)
 
 }
+
+

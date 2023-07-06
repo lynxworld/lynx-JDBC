@@ -14,4 +14,4 @@ MATCH (m:Comment {`id:ID`: $messageId })<-[:replyOf]-(c:Comment)-[:hasCreator]->
             WHEN null THEN false
             ELSE true
         END AS replyAuthorKnowsOriginalMessageAuthor
-     ORDER BY commentCreationDate DESC, replyAuthorId
+    ORDER BY commentCreationDate DESC, replyAuthorId

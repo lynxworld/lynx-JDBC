@@ -37,99 +37,108 @@ class MySQLTest {
   def IS1(): Unit = {
     val q = getQuery("interactive-short-1.cypher")
     val p = Map("personId" -> "300000000008100", "placeId" -> "200000000000981", "firstName" -> "Yang")
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
   def IS2(): Unit = {
     val q = getQuery("interactive-short-2.cypher")
     val p = Map("personId" -> "300000000008100", "commentId" -> "701511828493105")
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
   def IS3(): Unit = {
     val q = getQuery("interactive-short-3.cypher")
     val p = Map("personId" -> "300000000008100")
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
   def IS4(): Unit = {
     val q = getQuery("interactive-short-4.cypher")
     val p = Map("messageId" -> "700000000372154")
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
   def IS5(): Unit = {
     val q = getQuery("interactive-short-5.cypher")
     val p = Map("messageId" -> "700000000372154")
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
   def IS6(): Unit = {
     val q = getQuery("interactive-short-6.cypher")
-    val p = Map("messageId" -> "700000000372154")
+    val p = Map("messageId" -> "701236950581249")
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
   def IS7(): Unit = {
     val q = getQuery("interactive-short-7.cypher")
     val p = Map("messageId" -> "700824633721221")
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
   def Q1(): Unit = {
     val q = getQuery("interactive-complex-1.cypher")
     val p = Map("personId" -> "300000000008100", "firstName" -> "Jose")
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
   def Q2(): Unit = {
     val q = getQuery("interactive-complex-2.cypher")
     val p = Map("personId" -> "300000000008100", "maxDate" -> LynxDate.today)
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
@@ -140,11 +149,12 @@ class MySQLTest {
       "countryYName" -> "Colombia",
       "startDate" -> LynxDate(LocalDate.of(1800, 1, 1)),
       "endDate" -> LynxDate.today)
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    // result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
@@ -153,44 +163,48 @@ class MySQLTest {
     val p = Map("personId" -> "300000000008100",
       "startDate" -> LynxDate(LocalDate.of(1800, 1, 1)),
       "endDate" -> LynxDate.today)
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
   def Q5(): Unit = {
     val q = getQuery("interactive-complex-5.cypher")
     val p = Map("personId" -> "300000000008100", "minDate" -> LynxDate(LocalDate.of(1800, 1, 1)))
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
   def Q6(): Unit = {
     val q = getQuery("interactive-complex-6.cypher")
     val p = Map("personId" -> "300000000008100", "tagName" -> "Carl_Gustaf_Emil_Mannerheim")
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
   def Q7(): Unit = {
     val q = getQuery("interactive-complex-7.cypher")
     val p = Map("personId" -> "300000000008100")
+    //预热
+    MyGraph.run(q, p)
+
     val startTime = System.currentTimeMillis()
-    val result = MyGraph.run(q, p)
-    val endTime = System.currentTimeMillis()
-    System.out.println("程序运行时间： " + (endTime - startTime) + "ms")
-    result.show()
+    MyGraph.run(q, p).show()
+    System.out.println("程序运行时间： " + (System.currentTimeMillis() - startTime) + "ms")
   }
 
   @Test
