@@ -72,6 +72,25 @@ class MyGraph extends GraphModel {
     MyNode(id, label, propertyMap)
   }
 
+  def rowToNodeOffset(row:  ResultSet, tableName: String, config: Array[(String, String)], offset: Int): MyNode = {
+    val propertyMap = (0 until config.length).map { i =>
+      val columnName = LynxPropertyKey(config(i)._1)
+      val columnType = config(i)._2
+      val columnValue = columnType match {
+        case "BIGINT" => LynxValue(row.getLong(i + offset + 1))
+        case "INT" => LynxInteger(row.getInt(i + offset + 1))
+        case "Date" => LynxDate(transDate(row.getDate(i + offset + 1)))
+        case "String" => LynxString(row.getString(i + offset + 1))
+        case _ => LynxString(row.getString(i + offset + 1))
+      }
+      columnName -> columnValue
+    }.toMap
+
+    val id = MyId(row.getLong(offset + 1))
+    val label = Seq(LynxNodeLabel(tableName))
+    MyNode(id, label, propertyMap)
+  }
+
   def rowToRel(row: ResultSet, relName: String, config: Array[(String, String)]): MyRelationship = {
     val propertyMap = (0 to config.length - 1).map { i =>
       val columnName = LynxPropertyKey(config(i)._1)
@@ -84,6 +103,34 @@ class MyGraph extends GraphModel {
             case "INT" => LynxValue(row.getInt(i + 1))
             case "Date" => LynxDate(transDate(row.getDate(i + 1)))
             case _ => LynxString(row.getString(i + 1))
+          }
+        } catch {
+          case ex: NullPointerException => {
+            LynxNull
+          }
+        }
+      columnName -> columnValue
+    }.toMap
+
+    val id = MyId(row.getLong("REL_ID"))
+    val startId = MyId(row.getLong(":START_ID"))
+    val endId = MyId(row.getLong(":END_ID"))
+
+    MyRelationship(id, startId, endId, Some(LynxRelationshipType(relName)), propertyMap)
+  }
+
+  def rowToRelOffset(row: ResultSet, relName: String, config: Array[(String, String)], offset: Int): MyRelationship = {
+    val propertyMap = (0 to config.length - 1).map { i =>
+      val columnName = LynxPropertyKey(config(i)._1)
+      val columnType = config(i)._2
+      val columnValue =
+        try {
+          columnType match {
+            case "String" => LynxString(row.getString(i + offset + 1))
+            case "BIGINT" => LynxValue(row.getLong(i + offset + 1))
+            case "INT" => LynxValue(row.getInt(i + offset + 1))
+            case "Date" => LynxDate(transDate(row.getDate(i + offset + 1)))
+            case _ => LynxString(row.getString(i + offset + 1))
           }
         } catch {
           case ex: NullPointerException => {
@@ -393,7 +440,64 @@ class MyGraph extends GraphModel {
         .map(_.connectLeft(path)).flatMap(p => extendPath(p, relationshipFilter, direction, steps - 1))
   }
 
+  //写成带有JOIN的SQL语句的paths()
   override def paths(startNodeFilter: NodeFilter, relationshipFilter: RelationshipFilter, endNodeFilter: NodeFilter,
+                     direction: SemanticDirection, upperLimit: Int, lowerLimit: Int): Iterator[LynxPath] = {
+    //TODO: 暂不支持多跳的情况
+    if (upperLimit != 1 || lowerLimit != 1) {
+      throw new RuntimeException("Upper limit or lower limit not support")
+    }
+
+    if (direction == BOTH) {
+      return paths(startNodeFilter, relationshipFilter, endNodeFilter, OUTGOING, upperLimit, lowerLimit) ++
+        paths(startNodeFilter, relationshipFilter, endNodeFilter, INCOMING, upperLimit, lowerLimit)
+    }
+
+    val startTable = startNodeFilter.labels(0).toString()
+    val relType = relationshipFilter.types(0).toString()
+    val endTable = endNodeFilter.labels(0).toString()
+    var sql = s"select * from ${startTable} as t1 join ${relType} on t1.`id:ID` = "
+    direction match {
+      case OUTGOING => sql = sql + s"${relType}.`:START_ID` join ${endTable} as t2 on t2.`id:ID` = ${relType}.`:END_ID`"
+      case INCOMING => sql = sql + s"${relType}.`:END_ID` join ${endTable} as t2 on t2.`id:ID` = ${relType}.`:START_ID`"
+    }
+
+    val conditions = Array.concat(
+      startNodeFilter.properties.map { case (key, value) => s"t1.`${key.toString()}` = '${value.toString}'" }.toArray,
+      relationshipFilter.properties.map { case (key, value) => s"${relType}.`${key.toString()}` = '${value.toString}'" }.toArray,
+      endNodeFilter.properties.map { case (key, value) => s"t2.`${key.toString()}` = '${value.toString}'" }.toArray
+    )
+
+    for (i <- 0 until conditions.length) {
+      if (i == 0) {
+        sql = sql + " where " + conditions(i)
+      } else {
+        sql = sql + " and " + conditions(i)
+      }
+    }
+
+    println(sql)
+
+    val statement = connection.createStatement
+    val startTime1 = System.currentTimeMillis()
+    val data = statement.executeQuery(sql)
+    println("paths() combined SQL used: " + (System.currentTimeMillis() - startTime1) + " ms")
+
+    val result = Iterator.continually(data).takeWhile(_.next())
+      .map { resultSet =>
+        PathTriple(
+          rowToNodeOffset(resultSet, startTable, nodeSchema(startTable), 0),
+          rowToRelOffset(resultSet, relType, relSchema(relType), nodeSchema(startTable).length),
+          rowToNodeOffset(resultSet, endTable, nodeSchema(endTable), nodeSchema(startTable).length + relSchema(relType).length)
+        ).toLynxPath
+      }
+
+    println("paths() combined totally used: " + (System.currentTimeMillis() - startTime1) + " ms")
+    result
+  }
+
+ //原来的paths()
+/*  override def paths(startNodeFilter: NodeFilter, relationshipFilter: RelationshipFilter, endNodeFilter: NodeFilter,
             direction: SemanticDirection, upperLimit: Int, lowerLimit: Int): Iterator[LynxPath] = {
     // println("paths()" + upperLimit + " " + lowerLimit)
     //TODO: 如果filter是None，直接 select * from Rel
@@ -401,6 +505,7 @@ class MyGraph extends GraphModel {
 //    if (upperLimit != 1 || lowerLimit != 1) {
 //      throw new RuntimeException("Upper limit or lower limit not support")
 //    }
+
 //    if (startNodeFilter.properties.size == 0) {
 //      val result = relationships(relationshipFilter).map(_.toLynxPath)
 //                      .filter(_.endNode.forall(endNodeFilter.matches))
@@ -418,7 +523,7 @@ class MyGraph extends GraphModel {
 
     // println("paths() finished 1")
     result
-  }
+  }*/
 
   private val runner = new CypherRunner(this)
 
