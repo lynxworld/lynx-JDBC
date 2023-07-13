@@ -7,8 +7,7 @@
 }
 */
 
-MATCH (person:Person {`id:ID`: $personId })-[:knows]-(friend:Person),
-      (friend)<-[:hasCreator]-(post:Post)-[:hasTag]->(tag)
+MATCH (person:Person {`id:ID`: $personId })-[:knows]-(friend:Person)<-[:hasCreator]-(post:Post)-[:hasTag]->(tag)
 WITH DISTINCT tag, post
 WITH tag,
      CASE

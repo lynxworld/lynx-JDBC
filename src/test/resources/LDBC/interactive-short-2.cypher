@@ -18,15 +18,14 @@
 
 //原Cypher语句
 
-MATCH (:Person {`id:ID`: $personId}) <-[:hasCreator]- (message)
+MATCH (:Person {`id:ID`: $personId})<-[:hasCreator]-(message)
 WITH
   message,
   message.`id:ID` AS messageId,
   message.creationDate AS messageCreationDate
   ORDER BY messageCreationDate DESC, messageId ASC
   LIMIT 1
-MATCH (message)-[:replyOf*0..]->(post:Post),
-      (post)-[:hasCreator]->(person:Person)
+MATCH (message)-[:replyOf*0..]->(post:Post)-[:hasCreator]->(person:Person)
 RETURN
   messageId,
   coalesce(message.content,message.creationDate) AS messageContent,

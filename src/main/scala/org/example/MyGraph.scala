@@ -73,15 +73,16 @@ class MyGraph extends GraphModel {
   }
 
   def rowToNodeOffset(row:  ResultSet, tableName: String, config: Array[(String, String)], offset: Int): MyNode = {
-    val propertyMap = (0 until config.length).map { i =>
+    val propertyMap = config.indices.map { i =>
       val columnName = LynxPropertyKey(config(i)._1)
       val columnType = config(i)._2
+      val index = i + offset + 1
       val columnValue = columnType match {
-        case "BIGINT" => LynxValue(row.getLong(i + offset + 1))
-        case "INT" => LynxInteger(row.getInt(i + offset + 1))
-        case "Date" => LynxDate(transDate(row.getDate(i + offset + 1)))
-        case "String" => LynxString(row.getString(i + offset + 1))
-        case _ => LynxString(row.getString(i + offset + 1))
+        case "BIGINT" => LynxValue(row.getLong(index))
+        case "INT" => LynxInteger(row.getInt(index))
+        case "Date" => LynxDate(transDate(row.getDate(index)))
+        case "String" => LynxString(row.getString(index))
+        case _ => LynxString(row.getString(index))
       }
       columnName -> columnValue
     }.toMap
@@ -156,9 +157,9 @@ class MyGraph extends GraphModel {
     "Organisation"  -> Array(("id:ID", "BIGINT"), (":LABEL", "String"), ("type", "String"), ("name", "String"), ("url", "String")),
     "Comment" -> Array(("id:ID", "BIGINT"), (":LABEL", "String"), ("creationDate", "Date"), ("locationIP", "String"),
       ("browserUsed", "String"), ("content", "String"), ("length", "INT")),
-    "Post" -> Array(("creationDate", "Date"), ("id:ID", "BIGINT"), (":LABEL", "String"), ("imageFile", "String"),
+    "Post" -> Array(("id:ID", "BIGINT"), ("creationDate", "Date"), (":LABEL", "String"), ("imageFile", "String"),
       ("locationIP", "String"), ("browserUsed", "String"), ("language", "String"), ("content", "String"), ("length", "INT")),
-    "Forum" -> Array(("creationDate", "Date"), ("id:ID", "BIGINT"), (":LABEL", "String"), ("title", "String")),
+    "Forum" -> Array(("id:ID", "BIGINT"), ("creationDate", "Date"), (":LABEL", "String"), ("title", "String")),
     "Tag" -> Array(("id:ID", "BIGINT"), (":LABEL", "String"), ("name", "String"), ("url", "String")),
     "Tagclass" -> Array(("id:ID", "BIGINT"), (":LABEL", "String"), ("name", "String"), ("url", "String"))
   )
@@ -187,7 +188,7 @@ class MyGraph extends GraphModel {
     "replyOf" -> (Array("Comment"), Array("Comment", "Post")),   "containerOf" -> (Array("Forum"), Array("Post")),
     "hasCreator" -> (Array("Comment", "Post"), Array("Person")), "hasInterest" -> (Array("Person"), Array("Tag")),
     "workAt" -> (Array("Person"), Array("Organisation")),        "hasModerator" -> (Array("Forum"), Array("Person")),
-    "hasTag" -> (Array("Comment, Post, Forum"), Array("Tag")),   "hasType" -> (Array("Tag"), Array("Tagclass")),
+    "hasTag" -> (Array("Comment", "Post", "Forum"), Array("Tag")),   "hasType" -> (Array("Tag"), Array("Tagclass")),
     "isSubclassOf" -> (Array("Tagclass"), Array("Tagclass")),    "isPartOf" -> (Array("Place"), Array("Place")),
     "likes" -> (Array("Person"), Array("Comment", "Post")),      "knows" -> (Array("Person"), Array("Person")),
     "studyAt" -> (Array("Person"), Array("Organisation")),       "hasMember" -> (Array("Forum"), Array("Person")),
@@ -289,7 +290,7 @@ class MyGraph extends GraphModel {
       case o => o.toString
     })
     }.map { case (key, value) => key + s" = '${value}'" }.toArray
-    for (i <- 0 until conditions.length) {
+    for (i <- conditions.indices) {
       if (i == 0) {
         sql = sql + " where " + conditions(i)
       } else {
@@ -430,16 +431,6 @@ class MyGraph extends GraphModel {
     result
   }
 
-  override def extendPath(path: LynxPath, relationshipFilter: RelationshipFilter, direction: SemanticDirection, steps: Int): Iterator[LynxPath] = {
-    // println("extendPath() " + path.isEmpty + " " + steps)
-    if (path.isEmpty || steps <= 0) return Iterator(path)
-    Iterator(path) ++
-      expand(path.endNode.get.id, relationshipFilter, direction)
-        .filterNot(tri => path.nodeIds.contains(tri.endNode.id))
-        .map(_.toLynxPath)
-        .map(_.connectLeft(path)).flatMap(p => extendPath(p, relationshipFilter, direction, steps - 1))
-  }
-
   //写成带有JOIN的SQL语句的paths()
   override def paths(startNodeFilter: NodeFilter, relationshipFilter: RelationshipFilter, endNodeFilter: NodeFilter,
                      direction: SemanticDirection, upperLimit: Int, lowerLimit: Int): Iterator[LynxPath] = {
@@ -448,52 +439,62 @@ class MyGraph extends GraphModel {
       throw new RuntimeException("Upper limit or lower limit not support")
     }
 
+    val startTime1 = System.currentTimeMillis()
+
     if (direction == BOTH) {
       return paths(startNodeFilter, relationshipFilter, endNodeFilter, OUTGOING, upperLimit, lowerLimit) ++
         paths(startNodeFilter, relationshipFilter, endNodeFilter, INCOMING, upperLimit, lowerLimit)
     }
 
-    val startTable = startNodeFilter.labels(0).toString()
     val relType = relationshipFilter.types(0).toString()
-    val endTable = endNodeFilter.labels(0).toString()
-    var sql = s"select * from ${startTable} as t1 join ${relType} on t1.`id:ID` = "
-    direction match {
-      case OUTGOING => sql = sql + s"${relType}.`:START_ID` join ${endTable} as t2 on t2.`id:ID` = ${relType}.`:END_ID`"
-      case INCOMING => sql = sql + s"${relType}.`:END_ID` join ${endTable} as t2 on t2.`id:ID` = ${relType}.`:START_ID`"
-    }
-
+    val startTables = if (startNodeFilter.labels.size !=0) {startNodeFilter.labels.map(_.toString).toArray}
+                      else {relMapping(relType)._1}
+    val endTables = if (endNodeFilter.labels.size != 0) {endNodeFilter.labels.map(_.toString).toArray}
+                    else {relMapping(relType)._2}
+    //val startTable = startNodeFilter.labels(0).toString()
+    //val endTable = endNodeFilter.labels(0).toString()
     val conditions = Array.concat(
       startNodeFilter.properties.map { case (key, value) => s"t1.`${key.toString()}` = '${value.toString}'" }.toArray,
       relationshipFilter.properties.map { case (key, value) => s"${relType}.`${key.toString()}` = '${value.toString}'" }.toArray,
       endNodeFilter.properties.map { case (key, value) => s"t2.`${key.toString()}` = '${value.toString}'" }.toArray
     )
 
-    for (i <- 0 until conditions.length) {
-      if (i == 0) {
-        sql = sql + " where " + conditions(i)
-      } else {
-        sql = sql + " and " + conditions(i)
+    val finalResult = for {
+      startTable: String <- startTables
+      endTable: String <- endTables
+    } yield {
+      var sql = s"select * from ${startTable} as t1 join ${relType} on t1.`id:ID` = "
+      direction match {
+        case OUTGOING => sql = sql + s"${relType}.`:START_ID` join ${endTable} as t2 on t2.`id:ID` = ${relType}.`:END_ID`"
+        case INCOMING => sql = sql + s"${relType}.`:END_ID` join ${endTable} as t2 on t2.`id:ID` = ${relType}.`:START_ID`"
       }
-    }
 
-    println(sql)
+      for (i <- conditions.indices) {
+        if (i == 0) {
+          sql = sql + " where " + conditions(i)
+        } else {
+          sql = sql + " and " + conditions(i)
+        }
+      }
 
-    val statement = connection.createStatement
-    val startTime1 = System.currentTimeMillis()
-    val data = statement.executeQuery(sql)
-    println("paths() combined SQL used: " + (System.currentTimeMillis() - startTime1) + " ms")
+      println(sql)
 
-    val result = Iterator.continually(data).takeWhile(_.next())
-      .map { resultSet =>
+      val statement = connection.createStatement
+      val startTime1 = System.currentTimeMillis()
+      val data = statement.executeQuery(sql)
+      println("paths() combined SQL used: " + (System.currentTimeMillis() - startTime1) + " ms")
+
+      Iterator.continually(data).takeWhile(_.next()).map{ resultSet =>
         PathTriple(
           rowToNodeOffset(resultSet, startTable, nodeSchema(startTable), 0),
           rowToRelOffset(resultSet, relType, relSchema(relType), nodeSchema(startTable).length),
           rowToNodeOffset(resultSet, endTable, nodeSchema(endTable), nodeSchema(startTable).length + relSchema(relType).length)
         ).toLynxPath
       }
+    }
 
     println("paths() combined totally used: " + (System.currentTimeMillis() - startTime1) + " ms")
-    result
+    finalResult.iterator.flatten
   }
 
  //原来的paths()
