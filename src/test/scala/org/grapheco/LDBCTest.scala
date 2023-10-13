@@ -10,7 +10,10 @@ import scala.io.Source
 
 
 object LDBCTest {
-  val MyGraph: Mysql2Graph = new Mysql2Graph
+  val MyGraph: LynxJDBCConnector = LynxJDBCConnector.connect(
+  "jdbc:mysql://10.0.82.144:3306/LDBC1?serverTimezone=UTC&useUnicode=true&characterEncoding=utf8&useSSL=false",
+    "root", "Hc1478963!"
+  )
 }
 
 class LDBCTest {

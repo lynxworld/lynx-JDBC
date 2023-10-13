@@ -11,13 +11,13 @@ object Mapper {
   final val START_ID_COL_NAME: String = "START_ID"
   final val END_ID_COL_NAME: String = "END_ID"
 
-  private def mapId(row: ResultSet): ElementId = ElementId(row.getLong(ID_COL_NAME))
+  private def mapId(row: ResultSet): LynxIntegerID = LynxIntegerID(row.getLong(ID_COL_NAME))
 
-  private def mapRelId(row: ResultSet): ElementId = ElementId(row.getLong(REL_ID_COL_NAME))
+  private def mapRelId(row: ResultSet): LynxIntegerID = LynxIntegerID(row.getLong(REL_ID_COL_NAME))
 
-  private def mapStartId(row: ResultSet): ElementId = ElementId(row.getLong(START_ID_COL_NAME))
+  private def mapStartId(row: ResultSet): LynxIntegerID = LynxIntegerID(row.getLong(START_ID_COL_NAME))
 
-  private def mapEndId(row: ResultSet): ElementId = ElementId(row.getLong(END_ID_COL_NAME))
+  private def mapEndId(row: ResultSet): LynxIntegerID = LynxIntegerID(row.getLong(END_ID_COL_NAME))
 
   private def mapProps(row: ResultSet, mapper: Array[(String, String)]): Map[LynxPropertyKey, LynxValue] = {
     mapper.map { case (col, typo) =>
@@ -32,10 +32,10 @@ object Mapper {
     }.toMap
   }
 
-  def mapNode(row: ResultSet, tableName: String, mapper: Array[(String, String)]): ElementNode =
-    ElementNode(mapId(row), Seq(LynxNodeLabel(tableName)), mapProps(row, mapper))
+  def mapNode(row: ResultSet, tableName: String, mapper: Array[(String, String)]): LynxJDBCNode =
+    LynxJDBCNode(mapId(row), Seq(LynxNodeLabel(tableName)), mapProps(row, mapper))
 
-  def mapRel(row: ResultSet, relName: String, mapper: Array[(String, String)]): ElementRelationship =
-    ElementRelationship(mapRelId(row), mapStartId(row), mapEndId(row), Some(LynxRelationshipType(relName)), mapProps(row, mapper))
+  def mapRel(row: ResultSet, relName: String, mapper: Array[(String, String)]): LynxJDBCRelationship =
+    LynxJDBCRelationship(mapRelId(row), mapStartId(row), mapEndId(row), Some(LynxRelationshipType(relName)), mapProps(row, mapper))
 
 }
