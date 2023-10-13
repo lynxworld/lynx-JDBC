@@ -1,25 +1,24 @@
 package org.grapheco
 
+import org.grapheco.Mapper.{END_ID_COL_NAME, ID_COL_NAME, START_ID_COL_NAME, mapRel}
 import org.grapheco.db.DB
 import org.grapheco.lynx.LynxResult
 import org.grapheco.lynx.physical.{NodeInput, RelationshipInput}
-import org.grapheco.lynx.runner.{CypherRunner, GraphModel, NodeFilter, WriteTask}
+import org.grapheco.lynx.runner.{CypherRunner, GraphModel, NodeFilter, RelationshipFilter, WriteTask}
 import org.grapheco.lynx.types.LynxValue
-import org.grapheco.lynx.types.structural._
+import org.grapheco.lynx.types.structural.{LynxId, LynxNode, LynxNodeLabel, LynxPropertyKey, LynxRelationship, LynxRelationshipType, PathTriple}
+import org.grapheco.schema.ToSchema._
+//import org.grapheco.schema.Schema._
+import org.grapheco.schema.ToSchema
+import org.opencypher.v9_0.expressions.SemanticDirection
+import org.opencypher.v9_0.expressions.SemanticDirection.{BOTH, INCOMING, OUTGOING}
+
+import java.sql.{Connection, ResultSet}
 
 class Mysql2Graph extends GraphModel {
-  val connnect: Any = DB.connection
+  val connection: Connection = DB.connection
+  ToSchema.init(connection)
 
-  val runner = new CypherRunner(this)
-
-  def run(query: String, param: Map[String, Any] = Map.empty[String, Any]): LynxResult = runner.run(query, param)
-
-  /**
-   * An WriteTask object needs to be returned.
-   * There is no default implementation, you must override it.
-   *
-   * @return The WriteTask object
-   */
   override def write: WriteTask = new WriteTask {
     override def createElements[T](nodesInput: Seq[(String, NodeInput)], relationshipsInput: Seq[(String, RelationshipInput)], onCreated: (Seq[(String, LynxNode)], Seq[(String, LynxRelationship)]) => T): T = ???
 
@@ -50,117 +49,121 @@ class Mysql2Graph extends GraphModel {
     override def commit: Boolean = true
   }
 
-  /**
-   * Find Node By ID.
-   *
-   * @return An Option of node.
-   */
   override def nodeAt(id: LynxId): Option[LynxNode] = ???
 
-  /**
-   * All nodes.
-   *
-   * @return An Iterator of all nodes.
-   */
-  override def nodes(): Iterator[LynxNode] = ???
+  private def singleTableSelect(tableName: String, filters: Map[LynxPropertyKey, LynxValue]): Iterator[ResultSet] = {
+    val conditions: Map[String, Any] = filters.map { case (k, v) => k.toString -> v.value }
+    singleTableSelect(tableName, conditions.toList)
+  }
+
+  private def singleTableSelect(tableName: String, conditions: Seq[(String, Any)]): Iterator[ResultSet] = {
+    val selectWhat = nodeSchema.getOrElse(tableName, relSchema(tableName)).map(_._1).mkString(",")
+    val sql = s"select $selectWhat from ${tableName} ${
+      if (conditions.isEmpty) ""
+      else " where " + conditions.map { case (key, value) => s"$key = '$value'" }.mkString(" and ")
+    }"
+    DB.iterExecute(sql)
+  }
+
+  private def nodeAt(id: LynxId, tableList: Seq[String]): Option[ElementNode] = {
+    tableList.flatMap { t =>
+      singleTableSelect(t, List((ID_COL_NAME, id.toLynxInteger.v)))
+        .map(rs => Mapper.mapNode(rs, t, nodeSchema(t))).toSeq.headOption
+    }.headOption
+  }
+
+  override def nodes(): Iterator[ElementNode] = nodeSchema.keys
+    .toIterator.map(LynxNodeLabel).flatMap { l =>
+    nodes(NodeFilter(Seq(l), Map.empty))
+  }
 
   override def nodes(nodeFilter: NodeFilter): Iterator[ElementNode] = {
-    println("nodes(nodeFilter)")
-
-    if (nodeFilter.labels.isEmpty && nodeFilter.properties.isEmpty) {
-      return nodes()
-    }
-
-    val tableName = nodeFilter.labels.head.toString
-    val conditions = nodeFilter.properties.map { case (key, value) => s"`${key.toString}` = '${value.value}'" }.toArray
-
-    var sql = "select * from " + tableName
-
-    // add conditions to the sql query
-    for (i <- conditions.indices) {
-      if (i == 0) {
-        sql = sql + " where " + conditions(i)
-      } else {
-        sql = sql + " and " + conditions(i)
-      }
-    }
-
-    println(sql)
-
-    val statement = connnect.createStatement
-    val startTime2 = System.currentTimeMillis()
-    val data = statement.executeQuery(sql)
-    println("nodes(nodeFilter) SQL used: " + (System.currentTimeMillis() - startTime2) + " ms")
-
-    // transform the rows in the sql result to LynxNodes
-    val result = Iterator.continually(data).takeWhile(_.next())
-      .map { resultSet => rowToNode(resultSet, tableName, nodeSchema(tableName)) }
-
-    result
+    if (nodeFilter.labels.isEmpty && nodeFilter.properties.isEmpty) return nodes()
+    val t = nodeFilter.labels.head.toString
+    singleTableSelect(t, nodeFilter.properties).map { rs => Mapper.mapNode(rs, t, nodeSchema(t)) }
   }
+
   /**
-   * Return all relationships as PathTriple.
+   * Get all relationships in the database
    *
-   * @return An Iterator of PathTriple
+   * @return Iterator[PathTriple]
    */
-  override def relationships(): Iterator[PathTriple] = {
-    println("relationships()")
-
-    // iterate all relationship tables
-    val allRels = for (tableName <- relSchema.keys) yield {
-      val statement = connection.createStatement
-      val data = statement.executeQuery(s"select * from $tableName")
-
-      // transform all rows in the table to PathTriples
-      Iterator.continually(data).takeWhile(_.next())
-        .map { resultSet =>
-          val startNode = myNodeAt(MyId(resultSet.getLong(":START_ID")), relMapping(tableName)._1).get
-          val endNode = myNodeAt(MyId(resultSet.getLong(":END_ID")), relMapping(tableName)._2).get
-          val rel = rowToRel(resultSet, tableName, relSchema(tableName))
-
-          PathTriple(startNode, rel, endNode)
-        }
-    }
-
-    println("relationships() finished")
-    allRels.flatten.iterator
+  override def relationships(): Iterator[PathTriple] = relSchema.keys
+    .toIterator.map(LynxRelationshipType).flatMap { t =>
+    relationships(RelationshipFilter(Seq(t), Map.empty))
   }
 
-
+  /**
+   * Get relationships with filter
+   *
+   * @param relationshipFilter the filter with specific conditions
+   * @return Iterator[PathTriple]
+   */
   override def relationships(relationshipFilter: RelationshipFilter): Iterator[PathTriple] = {
-    println("relationships(relationshipFilter)")
+    println("relationships: ", relationshipFilter)
+    val t = relationshipFilter.types.head.toString
+    singleTableSelect(t, relationshipFilter.properties).map { rs =>
+      PathTriple(
+        nodeAt(ElementId(rs.getLong(START_ID_COL_NAME)), relMapping(t).source).get,
+        Mapper.mapRel(rs, t, relSchema(t)),
+        nodeAt(ElementId(rs.getLong(END_ID_COL_NAME)), relMapping(t).target).get
+      )
+    }
+  }
 
-    val tableName = relationshipFilter.types.head.toString
-    val conditions = relationshipFilter.properties.map { case (key, value) => s"`${key.toString}` = '${value.value}'" }.toArray
 
-    var sql = "select * from " + tableName
+  override def expand(nodeId: LynxId, relationshipFilter: RelationshipFilter, endNodeFilter: NodeFilter, direction: SemanticDirection): Iterator[PathTriple] = {
+    this.expand(nodeId, relationshipFilter, direction).filter { pathTriple =>
+      endNodeFilter.matches(pathTriple.endNode)
+    }
+  }
 
-    // add conditions to the sql query
-    for (i <- conditions.indices) {
-      if (i == 0) {
-        sql = sql + " where " + conditions(i)
-      } else {
-        sql = sql + " and " + conditions(i)
-      }
+  /**
+   * Used for path like (A)-[B]->(C), where A is point to start expand, B is relationship, C is endpoint
+   *
+   * @param id        id of A
+   * @param filter    relationship filter of B
+   * @param direction OUTGOING (-[B]->) or INCOMING (<-[B]-)
+   * @return Iterator[PathTriple]
+   */
+  override def expand(id: LynxId, filter: RelationshipFilter, direction: SemanticDirection): Iterator[PathTriple] = {
+    if (direction == BOTH) {
+      return expand(id, filter, OUTGOING) ++ expand(id, filter, INCOMING)
     }
 
-    println(sql)
+    val tableName = filter.types.head.toString
+    val relType = filter.types.head.toString
+    val conditions = filter.properties.map { case (key, value) => s"`${key.toString}` = '${value.value}'" }.toArray
 
-    val statement = connection.createStatement
-    val startTime1 = System.currentTimeMillis()
-    val data = statement.executeQuery(sql)
-    println("rel(relFilter) SQL used " + (System.currentTimeMillis() - startTime1) + " ms")
+    val startNode = direction match {
+      case OUTGOING => nodeAt(id, relMapping(tableName).source)
+      case INCOMING => nodeAt(id, relMapping(tableName).target)
+    }
 
-    // transform the rows in the sql result to PathTriples
-    val result = Iterator.continually(data).takeWhile(_.next())
-      .map { resultSet =>
-        val startNode = nodeAt(MyId(resultSet.getLong(":START_ID")), relMapping(tableName)._1).get
-        val endNode = nodeAt(MyId(resultSet.getLong(":END_ID")), relMapping(tableName)._2).get
-        val rel = rowToRel(resultSet, tableName, relSchema(tableName))
+    if (startNode.isEmpty) {
+      return Iterator.empty
+    }
+    // start building sql query
+    val selectWhat = relSchema(relType).map(_._1).mkString(",")
+    val where = (direction match {
+      case OUTGOING => s" where $relType.$START_ID_COL_NAME = ${id.toLynxInteger.value} "
+      case INCOMING => s" where $relType.$END_ID_COL_NAME = ${id.toLynxInteger.value} "
+    }) + (if (conditions.nonEmpty) " and " + conditions.mkString(" and ") else "")
 
-        PathTriple(startNode, rel, endNode)
+    val sql = s"select $selectWhat from $relType $where"
+
+    DB.iterExecute(sql).map { resultSet =>
+      val endNode = direction match {
+        case OUTGOING => nodeAt(ElementId(resultSet.getLong(END_ID_COL_NAME)), relMapping(tableName).target).get
+        case INCOMING => nodeAt(ElementId(resultSet.getLong(START_ID_COL_NAME)), relMapping(tableName).source).get
       }
-
-    result
+      PathTriple(startNode.get, mapRel(resultSet, relType, relSchema(relType)), endNode)
+    }
   }
+
+  private val runner = new CypherRunner(this)
+
+  def run(query: String, param: Map[String, Any] = Map.empty[String, Any]): LynxResult = runner.run(query, param)
 }
+
+

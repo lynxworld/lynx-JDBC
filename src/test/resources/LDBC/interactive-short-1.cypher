@@ -3,16 +3,21 @@
 :param personId: 10995116277794
  */
 
-MATCH (n:Person {id: $personId }) -[:isLocatedIn]-> (p:Place)
+MATCH (n:Person {id: $personId }) -[:workAt]-> (p:Organisation)
 RETURN
-    n.firstName AS firstName,
-    n.lastName AS lastName,
-    n.birthday AS birthday,
-    n.locationIP AS locationIP,
-    n.browserUsed AS browserUsed,
-    p.`id:ID` AS cityId,
-    n.gender AS gender,
-    n.creationDate AS creationDate
+  n.lastName AS name,
+  p.name AS Org_name
+
+//MATCH (n:Person {id: $personId }) -[:isLocatedIn]-> (p:Place)
+//RETURN
+//    n.firstName AS firstName,
+//    n.lastName AS lastName,
+//    n.birthday AS birthday,
+//    n.locationIP AS locationIP,
+//    n.browserUsed AS browserUsed,
+//    p.`id:ID` AS cityId,
+//    n.gender AS gender,
+//    n.creationDate AS creationDate
 
 //MATCH (n:Person {`id:ID`: $personId }) -[:isLocatedIn]-> (p:Place) <-[:isLocatedIn]- (n2:Person)
 //RETURN

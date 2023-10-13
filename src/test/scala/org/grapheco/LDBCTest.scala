@@ -1,6 +1,6 @@
 package org.grapheco
 
-import org.grapheco.MySQLTest.MyGraph
+import org.grapheco.LDBCTest.MyGraph
 import org.grapheco.lynx.types.time.LynxDate
 import org.junit.Test
 
@@ -10,7 +10,7 @@ import scala.io.Source
 
 
 object LDBCTest {
-  val MyGraph: MyGraph = new MyGraph
+  val MyGraph: Mysql2Graph = new Mysql2Graph
 }
 
 class LDBCTest {
