@@ -8,15 +8,15 @@ import org.grapheco.lynx.physical.{NodeInput, RelationshipInput}
 import org.grapheco.lynx.runner.{CypherRunner, GraphModel, NodeFilter, RelationshipFilter, WriteTask}
 import org.grapheco.lynx.types.LynxValue
 import org.grapheco.lynx.types.structural.{LynxId, LynxNode, LynxNodeLabel, LynxPropertyKey, LynxRelationship, LynxRelationshipType, PathTriple}
-import org.grapheco.schema.ToSchema._
-import org.grapheco.schema.ToSchema
+//import org.grapheco.schema.ToSchema._
+import org.grapheco.schema.SchemaManager
 import org.opencypher.v9_0.expressions.SemanticDirection
 import org.opencypher.v9_0.expressions.SemanticDirection.{BOTH, INCOMING, OUTGOING}
 
 import java.sql.{Connection, ResultSet}
 
-class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLogging{
-  ToSchema.init(connection)
+class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLogging {
+  //  ToSchema().init(connection)
 
   private def sql(sql: String): Unit = {
     logger.info(sql)
@@ -61,6 +61,8 @@ class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLog
     override def commit: Boolean = true
   }
 
+  val schema = SchemaManager.autoGeneration(connection)
+
   override def nodeAt(id: LynxId): Option[LynxNode] = ???
 
   private def singleTableSelect(tableName: String, filters: Map[LynxPropertyKey, LynxValue]): Iterator[ResultSet] = {
@@ -69,40 +71,60 @@ class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLog
   }
 
   private def singleTableSelect(tableName: String, conditions: Seq[(String, Any)]): Iterator[ResultSet] = {
-    val selectWhat = nodeSchema.getOrElse(tableName, relSchema(tableName)).map(_._1).mkString(",")
-    val sql = s"select $selectWhat from ${tableName} ${
-      if (conditions.isEmpty) ""
-      else " where " + conditions.map { case (key, value) => s"$key = '$value'" }.mkString(" and ")
-    }"
-    iterExecute(sql)
+    val node_schema = schema.nodeSchema.find(_.table_name == tableName)
+
+    node_schema match {
+      case Some(tableStructure) =>
+        val selectWhat = tableStructure.properties.map(_._1).mkString(",")
+        val sql = s"select $selectWhat from $tableName ${
+          if (conditions.isEmpty) ""
+          else " where " + conditions.map { case (key, value) => s"$key = '$value'" }.mkString(" and ")
+        }"
+        iterExecute(sql)
+
+      case None =>
+        Iterator.empty
+    }
   }
 
   private def nodeAt(id: LynxId, tableList: Seq[String]): Option[LynxJDBCNode] = {
     tableList.flatMap { t =>
       singleTableSelect(t, List((ID_COL_NAME, id.toLynxInteger.v)))
-        .map(rs => Mapper.mapNode(rs, t, nodeSchema(t))).toSeq.headOption
+        .map(rs => Mapper.mapNode(rs, t, schema.nodeSchema.find(_.table_name == t).map(_.properties).get)).toSeq.headOption
     }.headOption
   }
 
-  override def nodes(): Iterator[LynxJDBCNode] = nodeSchema.keys
-    .toIterator.map(LynxNodeLabel).flatMap { l =>
-    nodes(NodeFilter(Seq(l), Map.empty))
+  override def nodes(): Iterator[LynxJDBCNode] = schema.nodeSchema.toIterator.flatMap { nodeSchema =>
+    val labels = if (nodeSchema.fix_label) Seq(LynxNodeLabel(nodeSchema.label)) else Seq.empty
+    nodes(NodeFilter(labels, Map.empty))
   }
 
   override def nodes(nodeFilter: NodeFilter): Iterator[LynxJDBCNode] = {
     if (nodeFilter.labels.isEmpty && nodeFilter.properties.isEmpty) return nodes()
-    val t = nodeFilter.labels.head.toString
-    singleTableSelect(t, nodeFilter.properties).map { rs => Mapper.mapNode(rs, t, nodeSchema(t)) }
+    val label = nodeFilter.labels.head.toString
+    val filteredSchema = schema.nodeSchema.find(_.table_name == label)
+
+    filteredSchema match {
+      case Some(schema) =>
+        singleTableSelect(label, nodeFilter.properties).map { rs =>
+          Mapper.mapNode(rs, schema.table_name, schema.properties)
+        }
+      case None =>
+        Iterator.empty
+    }
   }
+
 
   /**
    * Get all relationships in the database
    *
    * @return Iterator[PathTriple]
    */
-  override def relationships(): Iterator[PathTriple] = relSchema.keys
-    .toIterator.map(LynxRelationshipType).flatMap { t =>
-    relationships(RelationshipFilter(Seq(t), Map.empty))
+  override def relationships(): Iterator[PathTriple] = {
+    schema.relSchema.flatMap { schema =>
+      val t = LynxRelationshipType(schema.table_name)
+      relationships(RelationshipFilter(Seq(t), Map.empty))
+    }.toIterator
   }
 
   /**
@@ -116,9 +138,9 @@ class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLog
     val t = relationshipFilter.types.head.toString
     singleTableSelect(t, relationshipFilter.properties).map { rs =>
       PathTriple(
-        nodeAt(LynxIntegerID(rs.getLong(START_ID_COL_NAME)), relMapping(t).source).get,
-        Mapper.mapRel(rs, t, relSchema(t)),
-        nodeAt(LynxIntegerID(rs.getLong(END_ID_COL_NAME)), relMapping(t).target).get
+        nodeAt(LynxIntegerID(rs.getLong(START_ID_COL_NAME)), schema.relMapping(t).source).get,
+        Mapper.mapRel(rs, t, schema.relSchema.find(_.table_name == t).map(_.properties).get),
+        nodeAt(LynxIntegerID(rs.getLong(END_ID_COL_NAME)), schema.relMapping(t).target).get
       )
     }
   }
@@ -148,15 +170,14 @@ class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLog
     val conditions = filter.properties.map { case (key, value) => s"`${key.toString}` = '${value.value}'" }.toArray
 
     val startNode = direction match {
-      case OUTGOING => nodeAt(id, relMapping(tableName).source)
-      case INCOMING => nodeAt(id, relMapping(tableName).target)
+      case OUTGOING => nodeAt(id, schema.relMapping(tableName).source)
+      case INCOMING => nodeAt(id, schema.relMapping(tableName).target)
     }
 
     if (startNode.isEmpty) {
       return Iterator.empty
     }
-    // start building sql query
-    val selectWhat = relSchema(relType).map(_._1).mkString(",")
+    val selectWhat = schema.relSchema.find(_.table_name == relType).map(_.properties).get.map(_._1).mkString(",")
     val where = (direction match {
       case OUTGOING => s" where $relType.$START_ID_COL_NAME = ${id.toLynxInteger.value} "
       case INCOMING => s" where $relType.$END_ID_COL_NAME = ${id.toLynxInteger.value} "
@@ -166,13 +187,13 @@ class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLog
 
     iterExecute(sql).map { resultSet =>
       val endNode = direction match {
-        case OUTGOING => nodeAt(LynxIntegerID(resultSet.getLong(END_ID_COL_NAME)), relMapping(tableName).target).get
-        case INCOMING => nodeAt(LynxIntegerID(resultSet.getLong(START_ID_COL_NAME)), relMapping(tableName).source).get
+        case OUTGOING => nodeAt(LynxIntegerID(resultSet.getLong(END_ID_COL_NAME)), schema.relMapping(tableName).target).get
+        case INCOMING => nodeAt(LynxIntegerID(resultSet.getLong(START_ID_COL_NAME)), schema.relMapping(tableName).source).get
       }
-      PathTriple(startNode.get, mapRel(resultSet, relType, relSchema(relType)), endNode)
+      PathTriple(startNode.get, mapRel(resultSet, relType, schema.relSchema.find(_.table_name == relType).map(_.properties).get), endNode)
     }
   }
 
- }
+}
 
 

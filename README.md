@@ -1,4 +1,6 @@
 # lynx-JDBC
+![Lynx](https://github.com/lynxworld/lynx-JDBC/assets/18690803/eb10d79f-34b9-4f8c-bd02-8c1abd52d1d6)
+
 The Lynx JDBC connector is used to connect Lynx to a relational database to support executing Cypher graph queries on it.
 <!-- GETTING STARTED -->
 ## Getting Started

@@ -2,7 +2,7 @@
 /*
 :param messageId: 206158431836
  */
-MATCH (m:Comment {`id:ID`:  $messageId })
+MATCH (m:Comment {`id`:  $messageId })
 RETURN
     m.creationDate as messageCreationDate,
     coalesce(m.content, m.creationDate) as messageContent
