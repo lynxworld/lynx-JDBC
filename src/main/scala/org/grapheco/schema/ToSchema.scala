@@ -3,7 +3,6 @@ package org.grapheco.schema
 
 import java.sql.Connection
 
-
 object ToSchema {
   case class RelMap(source: Seq[String], target: Seq[String])
 

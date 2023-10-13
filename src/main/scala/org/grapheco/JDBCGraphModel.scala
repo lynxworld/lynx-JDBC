@@ -1,5 +1,6 @@
 package org.grapheco
 
+import com.typesafe.scalalogging.LazyLogging
 import org.grapheco.Mapper.{END_ID_COL_NAME, ID_COL_NAME, START_ID_COL_NAME, mapRel}
 import org.grapheco.db.DB
 import org.grapheco.lynx.LynxResult
@@ -8,16 +9,27 @@ import org.grapheco.lynx.runner.{CypherRunner, GraphModel, NodeFilter, Relations
 import org.grapheco.lynx.types.LynxValue
 import org.grapheco.lynx.types.structural.{LynxId, LynxNode, LynxNodeLabel, LynxPropertyKey, LynxRelationship, LynxRelationshipType, PathTriple}
 import org.grapheco.schema.ToSchema._
-//import org.grapheco.schema.Schema._
 import org.grapheco.schema.ToSchema
 import org.opencypher.v9_0.expressions.SemanticDirection
 import org.opencypher.v9_0.expressions.SemanticDirection.{BOTH, INCOMING, OUTGOING}
 
 import java.sql.{Connection, ResultSet}
 
-class Mysql2Graph extends GraphModel {
-  val connection: Connection = DB.connection
+class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLogging{
   ToSchema.init(connection)
+
+  private def sql(sql: String): Unit = {
+    logger.info(sql)
+    val statement = connection.createStatement()
+    statement.executeQuery(sql)
+  }
+
+  private def iterExecute(sql: String): Iterator[ResultSet] = {
+    logger.info(sql)
+    val statement = connection.createStatement()
+    val result = statement.executeQuery(sql)
+    Iterator.continually(result).takeWhile(_.next())
+  }
 
   override def write: WriteTask = new WriteTask {
     override def createElements[T](nodesInput: Seq[(String, NodeInput)], relationshipsInput: Seq[(String, RelationshipInput)], onCreated: (Seq[(String, LynxNode)], Seq[(String, LynxRelationship)]) => T): T = ???
@@ -62,22 +74,22 @@ class Mysql2Graph extends GraphModel {
       if (conditions.isEmpty) ""
       else " where " + conditions.map { case (key, value) => s"$key = '$value'" }.mkString(" and ")
     }"
-    DB.iterExecute(sql)
+    iterExecute(sql)
   }
 
-  private def nodeAt(id: LynxId, tableList: Seq[String]): Option[ElementNode] = {
+  private def nodeAt(id: LynxId, tableList: Seq[String]): Option[LynxJDBCNode] = {
     tableList.flatMap { t =>
       singleTableSelect(t, List((ID_COL_NAME, id.toLynxInteger.v)))
         .map(rs => Mapper.mapNode(rs, t, nodeSchema(t))).toSeq.headOption
     }.headOption
   }
 
-  override def nodes(): Iterator[ElementNode] = nodeSchema.keys
+  override def nodes(): Iterator[LynxJDBCNode] = nodeSchema.keys
     .toIterator.map(LynxNodeLabel).flatMap { l =>
     nodes(NodeFilter(Seq(l), Map.empty))
   }
 
-  override def nodes(nodeFilter: NodeFilter): Iterator[ElementNode] = {
+  override def nodes(nodeFilter: NodeFilter): Iterator[LynxJDBCNode] = {
     if (nodeFilter.labels.isEmpty && nodeFilter.properties.isEmpty) return nodes()
     val t = nodeFilter.labels.head.toString
     singleTableSelect(t, nodeFilter.properties).map { rs => Mapper.mapNode(rs, t, nodeSchema(t)) }
@@ -104,9 +116,9 @@ class Mysql2Graph extends GraphModel {
     val t = relationshipFilter.types.head.toString
     singleTableSelect(t, relationshipFilter.properties).map { rs =>
       PathTriple(
-        nodeAt(ElementId(rs.getLong(START_ID_COL_NAME)), relMapping(t).source).get,
+        nodeAt(LynxIntegerID(rs.getLong(START_ID_COL_NAME)), relMapping(t).source).get,
         Mapper.mapRel(rs, t, relSchema(t)),
-        nodeAt(ElementId(rs.getLong(END_ID_COL_NAME)), relMapping(t).target).get
+        nodeAt(LynxIntegerID(rs.getLong(END_ID_COL_NAME)), relMapping(t).target).get
       )
     }
   }
@@ -152,18 +164,15 @@ class Mysql2Graph extends GraphModel {
 
     val sql = s"select $selectWhat from $relType $where"
 
-    DB.iterExecute(sql).map { resultSet =>
+    iterExecute(sql).map { resultSet =>
       val endNode = direction match {
-        case OUTGOING => nodeAt(ElementId(resultSet.getLong(END_ID_COL_NAME)), relMapping(tableName).target).get
-        case INCOMING => nodeAt(ElementId(resultSet.getLong(START_ID_COL_NAME)), relMapping(tableName).source).get
+        case OUTGOING => nodeAt(LynxIntegerID(resultSet.getLong(END_ID_COL_NAME)), relMapping(tableName).target).get
+        case INCOMING => nodeAt(LynxIntegerID(resultSet.getLong(START_ID_COL_NAME)), relMapping(tableName).source).get
       }
       PathTriple(startNode.get, mapRel(resultSet, relType, relSchema(relType)), endNode)
     }
   }
 
-  private val runner = new CypherRunner(this)
-
-  def run(query: String, param: Map[String, Any] = Map.empty[String, Any]): LynxResult = runner.run(query, param)
-}
+ }
 
 
