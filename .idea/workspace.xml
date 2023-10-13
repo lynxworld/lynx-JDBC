@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="d74a4fcc-ba21-4d78-b684-80931820832a" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/codeStyles/Project.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/codeStyles/codeStyleConfig.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/encodings.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/apiguardian-api-1.0.0.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/ast-9.0-9.0.20190305.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/commons-lang3-3.7.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/expressions-9.0-9.0.20190305.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/fastparse_2.12-2.1.0.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/front-end-9.0-9.0.20190305.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/gherkin-5.0.0.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/gherkin-jvm-deps-1.0.4.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/junit-jupiter-api-5.4.0.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/junit-platform-commons-1.4.0.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/log4j-1.2.14.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/lynx-0.5.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/mysql-connector-java-5.1.45.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/mysql-connector-java-8.0.30.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/opentest4j-1.1.1.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/parboiled-core-1.2.0.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/parboiled-scala_2.12-1.2.0.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/parser-9.0-9.0.20190305.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/protobuf-java-3.19.4.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/rewriting-9.0-9.0.20190305.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/scala-csv_2.12-1.3.10.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/scala-library-2.12.4.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/scala-logging_2.12-3.8.0.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/scala-reflect-2.12.4.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/scalacheck_2.12-1.14.0.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/slf4j-api-1.7.25.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/slf4j-log4j12-1.6.0.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/sourcecode_2.12-0.1.5.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/tck-1.0.0-1.0.0-M14.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/tck-api_2.12-1.0.0-1.0.0-M14.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/test-interface-1.0.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/util-9.0-9.0.20190305.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/org/example/Demo.scala" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/org/example/MyGraph.scala" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/org/example/MyId.scala" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/org/example/MyNode.scala" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/org/example/MyRelationship.scala" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/org/example/ToSchema.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/org/grapheco/schema/ToSchema.scala" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/org/example/package.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/org/grapheco/package.scala" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/org/parser/DB.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/org/grapheco/db/DB.scala" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/org/parser/Elements.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/org/grapheco/Elements.scala" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/org/parser/Mapper.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/org/grapheco/Mapper.scala" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/org/parser/Mysql2Graph.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/org/grapheco/Mysql2Graph.scala" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/org/parser/Schema.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/org/grapheco/schema/Schema.scala" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/scala/org/example/MySQLTest.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/scala/org/grapheco/MySQLTest.scala" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/scala/org/parser/MySQLTest.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/scala/org/grapheco/LDBCTest.scala" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Scala Worksheet" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectCodeStyleSettingsMigration">
+    <option name="version" value="2" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 3
+}</component>
+  <component name="ProjectId" id="2Weu9y5O8rRKmTs0F1Brl5mF3QU" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;project.structure.last.edited&quot;: &quot;Project&quot;,
+    &quot;project.structure.proportion&quot;: &quot;0.0&quot;,
+    &quot;project.structure.side.proportion&quot;: &quot;0.0&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="MoveClassesOrPackagesDialog.RECENTS_KEY">
+      <recent name="org.grapheco" />
+    </key>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="d74a4fcc-ba21-4d78-b684-80931820832a" name="Changes" comment="" />
+      <created>1697105221410</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1697105221410</updated>
+      <workItem from="1697105224992" duration="2360000" />
+      <workItem from="1697110115482" duration="37000" />
+      <workItem from="1697110930860" duration="891000" />
+      <workItem from="1697165941547" duration="2841000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>
