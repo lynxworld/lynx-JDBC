@@ -3,8 +3,7 @@ package org.grapheco
 import org.grapheco.db.DB
 import org.grapheco.lynx.LynxResult
 import org.grapheco.lynx.runner.{CypherRunner, GraphModel}
-import org.grapheco.schema.SchemaManager
-import org.grapheco.schema.SchemaManager.Schema
+import org.grapheco.schema.{Schema, SchemaManager}
 
 object LynxJDBCConnector {
   def connect(url: String, username: String, password: String): LynxJDBCConnector = {

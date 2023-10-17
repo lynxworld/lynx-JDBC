@@ -2,7 +2,7 @@ package org.grapheco
 
 import org.grapheco.lynx.types.LynxValue
 import org.grapheco.lynx.types.structural.{LynxNodeLabel, LynxPropertyKey, LynxRelationshipType}
-import org.grapheco.schema.SchemaManager.Schema
+import org.grapheco.schema.{Schema, SchemaManager}
 
 import java.sql.ResultSet
 import java.time.LocalDate
@@ -30,10 +30,16 @@ object Mapper {
     }.toMap
   }
 
-  def mapNode(row: ResultSet, tableName: String, mapper: Array[(String, String)], colName: String): LynxJDBCNode =
-    LynxJDBCNode(mapId(row, colName), Seq(LynxNodeLabel(tableName)), mapProps(row, mapper))
 
-  def mapRel(row: ResultSet, relName: String, colName: (String,String,String), mapper: Array[(String, String)]): LynxJDBCRelationship =
-    LynxJDBCRelationship(mapRelId(row, colName._1), mapStartId(row, colName._2), mapEndId(row, colName._3), Some(LynxRelationshipType(relName)), mapProps(row, mapper))
+  def mapNode(row: ResultSet, tableName: String, schema: Schema): LynxJDBCNode = {
+    val (colName, nodeProps) = SchemaManager.findNodeByName(schema, tableName).map(node => (node.id, node.properties)).get
+    LynxJDBCNode(mapId(row, colName), Seq(LynxNodeLabel(tableName)), mapProps(row, nodeProps))
+  }
 
+
+  def mapRel(row: ResultSet, tableName: String, schema: Schema): LynxJDBCRelationship = {
+    val (colName, srcColName, dstColName, props) =
+      SchemaManager.findRelByName(schema, tableName).map(node => (node.table_id, node.f1_name, node.f2_name, node.properties)).get
+    LynxJDBCRelationship(mapRelId(row, colName), mapStartId(row, srcColName), mapEndId(row, dstColName), Some(LynxRelationshipType(tableName)), mapProps(row, props))
+  }
 }

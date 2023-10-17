@@ -2,27 +2,26 @@ package org.grapheco.schema
 
 import play.api.libs.json.Format.GenericFormat
 import play.api.libs.json.Json
-import play.api.libs.json.{Json, Writes}
+
 import java.io.PrintWriter
 import java.sql.{Connection, DatabaseMetaData}
 
 object SchemaManager {
-  case class RelMap(source: Seq[String], target: Seq[String])
+  //  case class RelMap(source: Seq[String], target: Seq[String])
 
-  case class Schema(nodeSchema: Seq[NodeTableStructure], relSchema: Seq[RelationshipTableStructure], relMapping: Map[String, RelMap])
 
-  case class NodeTableStructure(table_name: String, prefixed_id: Boolean, id: String, fix_label: Boolean, label: String, properties: Array[(String, String)])
+  //  case class NodeStructure(table_name: String, prefixed_id: Boolean, id: String, fix_label: Boolean, label: String, properties: Array[(String, String)])
 
-  case class RelationshipTableStructure(table_name: String, table_id: String, src_v_table: String, src_v: String, f1_name: String,
-                                        dst_v_table: String, dst_v: String, f2_name: String, prefixed_edge_id: Boolean,
-                                        id: String, label: String, properties: Array[(String, String)])
+  //  case class RelStructure(table_name: String, table_id: String, src_v_table: String, src_v: String, f1_name: String,
+  //                                        dst_v_table: String, dst_v: String, f2_name: String, prefixed_edge_id: Boolean,
+  //                                        id: String, label: String, properties: Array[(String, String)])
 
-  implicit val nodeWrites: Writes[NodeTableStructure] = Json.writes[NodeTableStructure]
-  implicit val relWrites: Writes[RelationshipTableStructure] = Json.writes[RelationshipTableStructure]
+  //  implicit val nodeWrites: Writes[NodeStructure] = Json.writes[NodeStructure]
+  //  implicit val relWrites: Writes[RelStructure] = Json.writes[RelStructure]
 
-  def autoGeneration(connection: Connection): Schema = {
-    processDatabaseTables(connection: Connection)
-  }
+  //  def autoGeneration(connection: Connection): Schema = {
+  //    processDatabaseTables(connection: Connection)
+  //  }
 
   def readJson(): Unit = {
     //TODO
@@ -36,10 +35,13 @@ object SchemaManager {
     writeSchemaDataToJson(filePath, schema)
   }
 
+  def findRelByName(schema: Schema, tableName: String): Option[RelStructure] = schema.relSchema.find(_.table_name == tableName)
 
-  private def processDatabaseTables(connection: Connection): Schema = {
-    var nodeTables = Seq[NodeTableStructure]()
-    var relationshipTables = Seq[RelationshipTableStructure]()
+  def findNodeByName(schema: Schema, tableName: String): Option[NodeStructure] = schema.nodeSchema.find(_.table_name == tableName)
+
+  def autoGeneration(connection: Connection): Schema = {
+    var nodeTables = Seq[NodeStructure]()
+    var relationshipTables = Seq[RelStructure]()
     var rel_Mapping: Map[String, RelMap] = Map.empty
     val databaseMetaData = connection.getMetaData
     val catalog = connection.getCatalog
@@ -103,8 +105,8 @@ object SchemaManager {
     (fkCount, pkCount, pkColumnName, fkArray, propertyArray)
   }
 
-  private def createNodeTable(tableName: String, pkColumnName: String, arr: Array[(String, String)]): NodeTableStructure = {
-    NodeTableStructure(
+  private def createNodeTable(tableName: String, pkColumnName: String, arr: Array[(String, String)]): NodeStructure = {
+    NodeStructure(
       table_name = tableName,
       prefixed_id = true,
       id = pkColumnName,
@@ -114,10 +116,10 @@ object SchemaManager {
     )
   }
 
-  private def createRelTable(tableName: String, pkCount: Int, pkColumnName: String, pkArray: Array[(String, String, String)], fkCount: Int, arr: Array[(String, String)]): Seq[RelationshipTableStructure] = {
-    var tables = Seq[RelationshipTableStructure]()
+  private def createRelTable(tableName: String, pkCount: Int, pkColumnName: String, pkArray: Array[(String, String, String)], fkCount: Int, arr: Array[(String, String)]): Seq[RelStructure] = {
+    var tables = Seq[RelStructure]()
     for (i <- 0 until fkCount - 1) {
-      tables = tables :+ RelationshipTableStructure(
+      tables = tables :+ RelStructure(
         table_name = tableName,
         table_id = pkColumnName,
         src_v_table = pkArray(i + 1)._2,
@@ -131,7 +133,7 @@ object SchemaManager {
         label = tableName,
         properties = arr
       )
-      tables = tables :+ RelationshipTableStructure(
+      tables = tables :+ RelStructure(
         table_name = tableName,
         table_id = pkColumnName,
         src_v_table = pkArray(i)._2,
@@ -147,7 +149,7 @@ object SchemaManager {
       )
     }
     if (pkCount == 1) {
-      tables = tables :+ RelationshipTableStructure(
+      tables = tables :+ RelStructure(
         table_name = tableName,
         table_id = pkColumnName,
         src_v_table = tableName,
