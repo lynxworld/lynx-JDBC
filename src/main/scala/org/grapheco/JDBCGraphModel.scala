@@ -2,21 +2,18 @@ package org.grapheco
 
 import com.typesafe.scalalogging.LazyLogging
 import org.grapheco.Mapper.mapRel
-import org.grapheco.db.DB
-import org.grapheco.lynx.LynxResult
 import org.grapheco.lynx.physical.{NodeInput, RelationshipInput}
 import org.grapheco.lynx.runner.{CypherRunner, GraphModel, NodeFilter, RelationshipFilter, WriteTask}
 import org.grapheco.lynx.types.LynxValue
 import org.grapheco.lynx.types.structural.{LynxId, LynxNode, LynxNodeLabel, LynxPropertyKey, LynxRelationship, LynxRelationshipType, PathTriple}
-//import org.grapheco.schema.ToSchema._
 import org.grapheco.schema.SchemaManager
+import org.grapheco.schema.SchemaManager.Schema
 import org.opencypher.v9_0.expressions.SemanticDirection
 import org.opencypher.v9_0.expressions.SemanticDirection.{BOTH, INCOMING, OUTGOING}
 
 import java.sql.{Connection, ResultSet}
 
-class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLogging {
-  //  ToSchema().init(connection)
+class JDBCGraphModel(val connection: Connection, val schema: Schema) extends GraphModel with LazyLogging {
 
   private def sql(sql: String): Unit = {
     logger.info(sql)
@@ -60,8 +57,6 @@ class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLog
 
     override def commit: Boolean = true
   }
-
-  val schema = SchemaManager.autoGeneration(connection)
 
   override def nodeAt(id: LynxId): Option[LynxNode] = ???
 

@@ -8,10 +8,6 @@ import java.sql.ResultSet
 import java.time.LocalDate
 
 object Mapper {
-  //  final val ID_COL_NAME: String = "id"
-  //  final val REL_ID_COL_NAME: String = "REL_ID"
-  //  final val START_ID_COL_NAME: String = "START_ID"
-  //  final val END_ID_COL_NAME: String = "END_ID"
 
   private def mapId(row: ResultSet, colName: String): LynxIntegerID = LynxIntegerID(row.getLong(colName))
 
