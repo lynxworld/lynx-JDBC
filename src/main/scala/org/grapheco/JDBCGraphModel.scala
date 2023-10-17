@@ -1,7 +1,7 @@
 package org.grapheco
 
 import com.typesafe.scalalogging.LazyLogging
-import org.grapheco.Mapper.{END_ID_COL_NAME, ID_COL_NAME, START_ID_COL_NAME, mapRel}
+import org.grapheco.Mapper.mapRel
 import org.grapheco.db.DB
 import org.grapheco.lynx.LynxResult
 import org.grapheco.lynx.physical.{NodeInput, RelationshipInput}
@@ -89,8 +89,9 @@ class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLog
 
   private def nodeAt(id: LynxId, tableList: Seq[String]): Option[LynxJDBCNode] = {
     tableList.flatMap { t =>
-      singleTableSelect(t, List((ID_COL_NAME, id.toLynxInteger.v)))
-        .map(rs => Mapper.mapNode(rs, t, schema.nodeSchema.find(_.table_name == t).map(_.properties).get)).toSeq.headOption
+      //      singleTableSelect(t, List((ID_COL_NAME, id.toLynxInteger.v)))
+      singleTableSelect(t, List((schema.nodeSchema.find(_.table_name == t).map(_.id).get, id.toLynxInteger.v)))
+        .map(rs => Mapper.mapNode(rs, t, schema.nodeSchema.find(_.table_name == t).map(_.properties).get, schema.nodeSchema.find(_.table_name == t).map(_.id).get)).toSeq.headOption
     }.headOption
   }
 
@@ -105,9 +106,9 @@ class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLog
     val filteredSchema = schema.nodeSchema.find(_.table_name == label)
 
     filteredSchema match {
-      case Some(schema) =>
+      case Some(schemas) =>
         singleTableSelect(label, nodeFilter.properties).map { rs =>
-          Mapper.mapNode(rs, schema.table_name, schema.properties)
+          Mapper.mapNode(rs, schemas.table_name, schemas.properties, schema.nodeSchema.find(_.table_name == schemas.table_name).map(_.id).get)
         }
       case None =>
         Iterator.empty
@@ -127,24 +128,41 @@ class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLog
     }.toIterator
   }
 
-  /**
-   * Get relationships with filter
-   *
-   * @param relationshipFilter the filter with specific conditions
-   * @return Iterator[PathTriple]
-   */
+//  /**
+//   * Get relationships with filter
+//   *
+//   * @param relationshipFilter the filter with specific conditions
+//   * @return Iterator[PathTriple]
+//   */
+//  override def relationships(relationshipFilter: RelationshipFilter): Iterator[PathTriple] = {
+//    println("relationships: ", relationshipFilter)
+//    val t = relationshipFilter.types.head.toString
+//    singleTableSelect(t, relationshipFilter.properties).map { rs =>
+//      PathTriple(
+//        //        nodeAt(LynxIntegerID(rs.getLong(START_ID_COL_NAME)), schema.relMapping(t).source).get,
+//        nodeAt(LynxIntegerID(rs.getLong(schema.relSchema.find(_.table_name == t).map(_.f1_name).get)), schema.relMapping(t).source).get,
+//        Mapper.mapRel(rs, t, schema.relSchema.find(_.table_name == t) match {
+//          case Some(table) => (table.table_id, table.f1_name, table.f2_name)
+//        }
+//          , schema.relSchema.find(_.table_name == t).map(_.properties).get)
+//        ,
+//        //        nodeAt(LynxIntegerID(rs.getLong(END_ID_COL_NAME)), schema.relMapping(t).target).get
+//        nodeAt(LynxIntegerID(rs.getLong(schema.relSchema.find(_.table_name == t).map(_.f2_name).get)), schema.relMapping(t).target).get
+//      )
+//    }
+//  }
+
   override def relationships(relationshipFilter: RelationshipFilter): Iterator[PathTriple] = {
     println("relationships: ", relationshipFilter)
     val t = relationshipFilter.types.head.toString
     singleTableSelect(t, relationshipFilter.properties).map { rs =>
       PathTriple(
-        nodeAt(LynxIntegerID(rs.getLong(START_ID_COL_NAME)), schema.relMapping(t).source).get,
-        Mapper.mapRel(rs, t, schema.relSchema.find(_.table_name == t).map(_.properties).get),
-        nodeAt(LynxIntegerID(rs.getLong(END_ID_COL_NAME)), schema.relMapping(t).target).get
+        nodeAt(LynxIntegerID(rs.getLong(schema.relSchema.find(_.table_name == t).map(_.f1_name).get)), schema.relMapping(t).source).get,
+        Mapper.mapRel(rs, t, (schema.relSchema.find(_.table_name == t).map(_.table_id).get, schema.relSchema.find(_.table_name == t).map(_.f1_name).get, schema.relSchema.find(_.table_name == t).map(_.f2_name).get),schema.relSchema.find(_.table_name == t).map(_.properties).get),
+        nodeAt(LynxIntegerID(rs.getLong(schema.relSchema.find(_.table_name == t).map(_.f2_name).get)), schema.relMapping(t).target).get
       )
     }
   }
-
 
   override def expand(nodeId: LynxId, relationshipFilter: RelationshipFilter, endNodeFilter: NodeFilter, direction: SemanticDirection): Iterator[PathTriple] = {
     this.expand(nodeId, relationshipFilter, direction).filter { pathTriple =>
@@ -178,19 +196,22 @@ class JDBCGraphModel(val connection: Connection) extends GraphModel with LazyLog
       return Iterator.empty
     }
     val selectWhat = schema.relSchema.find(_.table_name == relType).map(_.properties).get.map(_._1).mkString(",")
+    val relTable = schema.relSchema.find(_.table_name == tableName)
+    val srcColName = relTable.map(_.f1_name).get
+    val dstColName = relTable.map(_.f2_name).get
     val where = (direction match {
-      case OUTGOING => s" where $relType.$START_ID_COL_NAME = ${id.toLynxInteger.value} "
-      case INCOMING => s" where $relType.$END_ID_COL_NAME = ${id.toLynxInteger.value} "
+      case OUTGOING => s" where $relType.$srcColName = ${id.toLynxInteger.value} "
+      case INCOMING => s" where $relType.$dstColName = ${id.toLynxInteger.value} "
     }) + (if (conditions.nonEmpty) " and " + conditions.mkString(" and ") else "")
 
     val sql = s"select $selectWhat from $relType $where"
 
     iterExecute(sql).map { resultSet =>
       val endNode = direction match {
-        case OUTGOING => nodeAt(LynxIntegerID(resultSet.getLong(END_ID_COL_NAME)), schema.relMapping(tableName).target).get
-        case INCOMING => nodeAt(LynxIntegerID(resultSet.getLong(START_ID_COL_NAME)), schema.relMapping(tableName).source).get
+        case OUTGOING => nodeAt(LynxIntegerID(resultSet.getLong(dstColName)), schema.relMapping(tableName).target).get
+        case INCOMING => nodeAt(LynxIntegerID(resultSet.getLong(srcColName)), schema.relMapping(tableName).source).get
       }
-      PathTriple(startNode.get, mapRel(resultSet, relType, schema.relSchema.find(_.table_name == relType).map(_.properties).get), endNode)
+      PathTriple(startNode.get, mapRel(resultSet, relType, (relTable.map(_.table_id).get, relTable.map(_.f1_name).get, relTable.map(_.f2_name).get), schema.relSchema.find(_.table_name == relType).map(_.properties).get), endNode)
     }
   }
 

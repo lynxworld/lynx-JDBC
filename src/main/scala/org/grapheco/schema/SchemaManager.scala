@@ -13,7 +13,9 @@ object SchemaManager {
 
   case class NodeTableStructure(table_name: String, prefixed_id: Boolean, id: String, fix_label: Boolean, label: String, properties: Array[(String, String)])
 
-  case class RelationshipTableStructure(table_name: String, src_v_table: String, src_v: String, dst_v_table: String, dst_v: String, prefixed_edge_id: Boolean, id: String, label: String, properties: Array[(String, String)])
+  case class RelationshipTableStructure(table_name: String, table_id: String, src_v_table: String, src_v: String, f1_name: String,
+                                        dst_v_table: String, dst_v: String, f2_name: String, prefixed_edge_id: Boolean,
+                                        id: String, label: String, properties: Array[(String, String)])
 
   implicit val nodeWrites: Writes[NodeTableStructure] = Json.writes[NodeTableStructure]
   implicit val relWrites: Writes[RelationshipTableStructure] = Json.writes[RelationshipTableStructure]
@@ -114,26 +116,16 @@ object SchemaManager {
 
   private def createRelTable(tableName: String, pkCount: Int, pkColumnName: String, pkArray: Array[(String, String, String)], fkCount: Int, arr: Array[(String, String)]): Seq[RelationshipTableStructure] = {
     var tables = Seq[RelationshipTableStructure]()
-    if (pkCount == 1) {
-      tables = tables :+ RelationshipTableStructure(
-        table_name = tableName,
-        src_v_table = tableName,
-        src_v = pkColumnName,
-        dst_v_table = pkArray(0)._2,
-        dst_v = pkArray(0)._3,
-        prefixed_edge_id = true,
-        id = s"'$tableName'::$pkColumnName::${pkArray(0)._1}",
-        label = tableName,
-        properties = arr
-      )
-    }
     for (i <- 0 until fkCount - 1) {
       tables = tables :+ RelationshipTableStructure(
         table_name = tableName,
+        table_id = pkColumnName,
         src_v_table = pkArray(i + 1)._2,
         src_v = pkArray(i + 1)._3,
+        f1_name = pkArray(i + 1)._1,
         dst_v_table = pkArray(i)._2,
         dst_v = pkArray(i)._3,
+        f2_name = pkArray(i)._1,
         prefixed_edge_id = true,
         id = s"'$tableName'::${pkArray(i + 1)._1}::${pkArray(i)._1}",
         label = tableName,
@@ -141,14 +133,34 @@ object SchemaManager {
       )
       tables = tables :+ RelationshipTableStructure(
         table_name = tableName,
+        table_id = pkColumnName,
         src_v_table = pkArray(i)._2,
         src_v = pkArray(i)._3,
+        f1_name = pkArray(i)._1,
         dst_v_table = pkArray(i + 1)._2,
         dst_v = pkArray(i + 1)._3,
+        f2_name = pkArray(i + 1)._1,
         prefixed_edge_id = true,
         id = s"'$tableName'::${pkArray(i)._1}::${pkArray(i + 1)._1}",
         label = tableName,
         properties = arr
+      )
+    }
+    if (pkCount == 1) {
+      tables = tables :+ RelationshipTableStructure(
+        table_name = tableName,
+        table_id = pkColumnName,
+        src_v_table = tableName,
+        src_v = pkColumnName,
+        f1_name = pkColumnName,
+        dst_v_table = pkArray(0)._2,
+        dst_v = pkArray(0)._3,
+        f2_name = pkArray(0)._1,
+        prefixed_edge_id = true,
+        id = s"'$tableName'::$pkColumnName::${pkArray(0)._1}",
+        label = tableName,
+        properties = arr,
+
       )
     }
     tables
