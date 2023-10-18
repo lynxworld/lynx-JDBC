@@ -7,21 +7,6 @@ import java.io.PrintWriter
 import java.sql.{Connection, DatabaseMetaData}
 
 object SchemaManager {
-  //  case class RelMap(source: Seq[String], target: Seq[String])
-
-
-  //  case class NodeStructure(table_name: String, prefixed_id: Boolean, id: String, fix_label: Boolean, label: String, properties: Array[(String, String)])
-
-  //  case class RelStructure(table_name: String, table_id: String, src_v_table: String, src_v: String, f1_name: String,
-  //                                        dst_v_table: String, dst_v: String, f2_name: String, prefixed_edge_id: Boolean,
-  //                                        id: String, label: String, properties: Array[(String, String)])
-
-  //  implicit val nodeWrites: Writes[NodeStructure] = Json.writes[NodeStructure]
-  //  implicit val relWrites: Writes[RelStructure] = Json.writes[RelStructure]
-
-  //  def autoGeneration(connection: Connection): Schema = {
-  //    processDatabaseTables(connection: Connection)
-  //  }
 
   def readJson(): Unit = {
     //TODO

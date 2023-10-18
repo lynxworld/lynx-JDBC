@@ -32,14 +32,19 @@ object Mapper {
 
 
   def mapNode(row: ResultSet, tableName: String, schema: Schema): LynxJDBCNode = {
-    val (colName, nodeProps) = SchemaManager.findNodeByName(schema, tableName).map(node => (node.id, node.properties)).get
-    LynxJDBCNode(mapId(row, colName), Seq(LynxNodeLabel(tableName)), mapProps(row, nodeProps))
+    val _schema = SchemaManager.findNodeByName(schema, tableName)
+    if (_schema.isEmpty) throw new Exception("schema not find")
+    LynxJDBCNode(mapId(row, _schema.get.id), Seq(LynxNodeLabel(_schema.get.label)), mapProps(row, _schema.get.properties))
   }
 
 
   def mapRel(row: ResultSet, tableName: String, schema: Schema): LynxJDBCRelationship = {
-    val (colName, srcColName, dstColName, props) =
-      SchemaManager.findRelByName(schema, tableName).map(node => (node.table_id, node.f1_name, node.f2_name, node.properties)).get
-    LynxJDBCRelationship(mapRelId(row, colName), mapStartId(row, srcColName), mapEndId(row, dstColName), Some(LynxRelationshipType(tableName)), mapProps(row, props))
+    val _schema = SchemaManager.findRelByName(schema, tableName)
+    if (_schema.isEmpty) throw new Exception("schema not find")
+    LynxJDBCRelationship(mapRelId(row, _schema.get.table_id),
+      mapStartId(row, _schema.get.f1_name),
+      mapEndId(row, _schema.get.f2_name),
+      Some(LynxRelationshipType(_schema.get.label)),
+      mapProps(row, _schema.get.properties))
   }
 }
