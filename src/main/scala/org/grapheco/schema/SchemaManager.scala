@@ -1,15 +1,32 @@
 package org.grapheco.schema
 
+import org.grapheco.schema.NodeStructure.nodeWrites
 import play.api.libs.json.Format.GenericFormat
-import play.api.libs.json.Json
+import play.api.libs.json.{JsValue, Json}
 
 import java.io.PrintWriter
 import java.sql.{Connection, DatabaseMetaData}
+import scala.io.Source
 
 object SchemaManager {
 
-  def readJson(): Unit = {
-    //TODO
+  def readJson(filePath: String): Schema = {
+    val jsonPath = if (filePath.isEmpty) "Schema.json" else s"$filePath"
+
+    try {
+      val jsonString = Source.fromFile(jsonPath).mkString
+      val json = Json.parse(jsonString)
+
+      val nodeSchema = (json \ "Node_Tables").as[JsValue].asOpt[Seq[NodeStructure]].get
+      val relSchema = (json \ "Relationship_Tables").as[JsValue].asOpt[Seq[RelStructure]].get
+      val relMap = (json \ "Relationship_Tables").as[JsValue].asOpt[Map[String, RelMap]].get
+
+      Schema(nodeSchema, relSchema, relMap)
+    } catch {
+      case e: Exception =>
+        println(s"Error reading JSON from file: ${e.getMessage}")
+        null
+    }
   }
 
   def update(): Unit = {
@@ -22,6 +39,8 @@ object SchemaManager {
 
   def findRelByName(schema: Schema, tableName: String): Option[RelStructure] = schema.relSchema.find(_.table_name == tableName)
 
+  def findNodeByLabel(schema: Schema, label: String): Option[NodeStructure] = schema.nodeSchema.find(_.label == label)
+  def findRelByLabel(schema: Schema, label: String): Option[RelStructure] = schema.relSchema.find(_.label == label)
   def findNodeByName(schema: Schema, tableName: String): Option[NodeStructure] = schema.nodeSchema.find(_.table_name == tableName)
 
   def autoGeneration(connection: Connection): Schema = {
@@ -157,11 +176,12 @@ object SchemaManager {
     val jsonContext = Json.prettyPrint(
       Json.obj(
         "Node_Tables" -> Json.toJson(schema.nodeSchema),
-        "Relationship_Tables" -> Json.toJson(schema.relSchema)))
+        "Relationship_Tables" -> Json.toJson(schema.relSchema),
+        "Relationship_Map" -> Json.toJson(schema.relMapping)))
 
     val jsonPath = filePath match {
       case "" => "Schema.json"
-      case _ => filePath + "/Schema.json"
+      case _ => filePath
     }
     "Schema.json"
     val v_writer = new PrintWriter(jsonPath)

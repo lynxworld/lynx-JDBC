@@ -1,12 +1,13 @@
 package org.grapheco
 
+import cats.implicits.toFunctorOps
 import com.typesafe.scalalogging.LazyLogging
 import org.grapheco.Mapper.mapRel
 import org.grapheco.lynx.physical.{NodeInput, RelationshipInput}
 import org.grapheco.lynx.runner.{GraphModel, NodeFilter, RelationshipFilter, WriteTask}
 import org.grapheco.lynx.types.LynxValue
 import org.grapheco.lynx.types.structural._
-import org.grapheco.schema.{Schema, SchemaManager}
+import org.grapheco.schema.{NodeStructure, RelStructure, Schema, SchemaManager}
 import org.opencypher.v9_0.expressions.SemanticDirection
 import org.opencypher.v9_0.expressions.SemanticDirection.{BOTH, INCOMING, OUTGOING}
 
@@ -31,34 +32,143 @@ class JDBCGraphModel(val connection: Connection, val schema: Schema) extends Gra
   override def write: WriteTask = new WriteTask {
     override def createElements[T](nodesInput: Seq[(String, NodeInput)], relationshipsInput: Seq[(String, RelationshipInput)], onCreated: (Seq[(String, LynxNode)], Seq[(String, LynxRelationship)]) => T): T = ???
 
-    override def deleteRelations(ids: Iterator[LynxId]): Unit = ???
+    override def deleteRelations(ids: Iterator[LynxId]): Unit = {
+      if (ids.nonEmpty) {
+        val tableNames: Seq[String] = schema.relSchema.map(_.table_name)
+        val idList = ids.mkString(",")
+        for (tableName <- tableNames) {
+          val sql = s"DELETE FROM $tableName WHERE id IN ($idList)"
+          iterExecute(sql)
+        }
+      }
+    }
 
-    override def deleteNodes(ids: Seq[LynxId]): Unit = ???
+    override def deleteNodes(ids: Seq[LynxId]): Unit = {
+      deleteRelations(ids.iterator)
+      if (ids.nonEmpty) {
+        val tableNames: Seq[String] = schema.nodeSchema.map(_.table_name)
+        val idList = ids.mkString(",")
+        for (tableName <- tableNames) {
+          val sql = s"DELETE FROM $tableName WHERE id IN ($idList)"
+          iterExecute(sql)
+        }
+      }
+    }
 
-    override def updateNode(lynxId: LynxId, labels: Seq[LynxNodeLabel], props: Map[LynxPropertyKey, LynxValue]): Option[LynxNode] = ???
+    def updateTable(lynxId: LynxId, table: Any, propMap: Map[LynxPropertyKey, LynxValue]): Iterator[ResultSet] = {
+      val (tableName, props) = table match {
+        case v: NodeStructure => (v.table_name, v.properties)
+        case v: RelStructure => (v.table_name, v.properties)
+      }
+      val updateSql = s"UPDATE $tableName SET "
+      val valueSql =
+        propMap.map { case (key, value) =>
+          if (props.foldLeft(Map.empty[String, String]) {
+            case (acc, (key, value)) => acc + (key -> value)
+          }(key.value).nonEmpty)
+            s"${key.value} = '${value.toString}'"
+        }.mkString(", ") + s" WHERE id = $lynxId"
+      iterExecute(updateSql + valueSql)
+    }
 
-    override def updateRelationShip(lynxId: LynxId, props: Map[LynxPropertyKey, LynxValue]): Option[LynxRelationship] = ???
+    override def updateNode(lynxId: LynxId, labels: Seq[LynxNodeLabel], props: Map[LynxPropertyKey, LynxValue]): Option[LynxNode] = {
+      SchemaManager.findNodeByLabel(schema, labels.head.value) match {
+        case Some(table) => updateTable(lynxId, table, props)
+        case _ => None
+      }
+      nodeAt(lynxId)
+    }
 
-    override def setNodesProperties(nodeIds: Iterator[LynxId], data: Array[(LynxPropertyKey, Any)], cleanExistProperties: Boolean): Iterator[Option[LynxNode]] = ???
+    override def updateRelationShip(lynxId: LynxId, props: Map[LynxPropertyKey, LynxValue]): Option[LynxRelationship] = {
+      SchemaManager.findRelByLabel(schema, nodeAt(lynxId).get.labels.head.value) match {
+        case Some(table) => updateTable(lynxId, table, props)
+          Option(mapRel(updateTable(lynxId, table, props).toSeq.head, table.table_name, schema))
+        case _ => None
+      }
+    }
 
-    override def setNodesLabels(nodeIds: Iterator[LynxId], labels: Array[LynxNodeLabel]): Iterator[Option[LynxNode]] = ???
+    override def setNodesProperties(nodeIds: Iterator[LynxId], data: Array[(LynxPropertyKey, Any)], cleanExistProperties: Boolean): Iterator[Option[LynxNode]] = {
+      if (cleanExistProperties) {
+        deleteNodes(nodeIds.toSeq)
+      }
+      val props: Map[LynxPropertyKey, LynxValue] = data.foldLeft(Map.empty[LynxPropertyKey, LynxValue]) {
+        case (acc, (key, value)) => acc + (key -> LynxValue(value))
+      }
+      nodeIds.map { nodeId =>
+        updateNode(nodeId, nodeAt(nodeId).get.labels, props)
+      }
+    }
 
-    override def setRelationshipsProperties(relationshipIds: Iterator[LynxId], data: Array[(LynxPropertyKey, Any)]): Iterator[Option[LynxRelationship]] = ???
+    override def setNodesLabels(nodeIds: Iterator[LynxId], labels: Array[LynxNodeLabel]): Iterator[Option[LynxNode]] = {
+      nodeIds.map { nodeId =>
+        updateNode(nodeId, labels, null)
+      }
+    }
 
-    override def setRelationshipsType(relationshipIds: Iterator[LynxId], typeName: LynxRelationshipType): Iterator[Option[LynxRelationship]] = ???
+    override def setRelationshipsProperties(relationshipIds: Iterator[LynxId], data: Array[(LynxPropertyKey, Any)]): Iterator[Option[LynxRelationship]] = {
+      val props: Map[LynxPropertyKey, LynxValue] = data.foldLeft(Map.empty[LynxPropertyKey, LynxValue]) {
+        case (acc, (key, value)) => acc + (key -> LynxValue(value))
+      }
+      relationshipIds.map { nodeId =>
+        updateRelationShip(nodeId, props)
+      }
+    }
 
-    override def removeNodesProperties(nodeIds: Iterator[LynxId], data: Array[LynxPropertyKey]): Iterator[Option[LynxNode]] = ???
+    override def setRelationshipsType(relationshipIds: Iterator[LynxId], typeName: LynxRelationshipType): Iterator[Option[LynxRelationship]] = {
+      relationshipIds.map { nodeId =>
+        val n = SchemaManager.findRelByLabel(schema, nodeAt(nodeId).get.labels.head.value).get
+        updateRelationShip(nodeId, Map(LynxPropertyKey(n.label) -> LynxValue(typeName.value)))
+      }
+    }
 
-    override def removeNodesLabels(nodeIds: Iterator[LynxId], labels: Array[LynxNodeLabel]): Iterator[Option[LynxNode]] = ???
+    override def removeNodesProperties(nodeIds: Iterator[LynxId], data: Array[LynxPropertyKey]): Iterator[Option[LynxNode]] = {
+      nodeIds.map { nodeId =>
+        val n = SchemaManager.findNodeByLabel(schema, nodeAt(nodeId).get.labels.head.value).get
+        updateNode(nodeId, Seq(LynxNodeLabel(n.label)), data.map { label =>
+          val propertyKey = LynxPropertyKey(label.value)
+          propertyKey -> null
+        }.toMap)
+      }
+    }
 
-    override def removeRelationshipsProperties(relationshipIds: Iterator[LynxId], data: Array[LynxPropertyKey]): Iterator[Option[LynxRelationship]] = ???
+    override def removeNodesLabels(nodeIds: Iterator[LynxId], labels: Array[LynxNodeLabel]): Iterator[Option[LynxNode]] = {
+      nodeIds.map { nodeId =>
+        val n = SchemaManager.findNodeByLabel(schema, nodeAt(nodeId).get.labels.head.value).get
+        updateNode(nodeId, Seq(LynxNodeLabel(n.label)), labels.map { label =>
+          val propertyKey = LynxPropertyKey(label.value)
+          propertyKey -> null
+        }.toMap)
+      }
+    }
 
-    override def removeRelationshipsType(relationshipIds: Iterator[LynxId], typeName: LynxRelationshipType): Iterator[Option[LynxRelationship]] = ???
+    override def removeRelationshipsProperties(relationshipIds: Iterator[LynxId], data: Array[LynxPropertyKey]): Iterator[Option[LynxRelationship]] = {
+      relationshipIds.map { nodeId =>
+        val n = SchemaManager.findRelByLabel(schema, nodeAt(nodeId).get.labels.head.value).get
+        updateRelationShip(nodeId, data.map { label =>
+          val propertyKey = LynxPropertyKey(label.value)
+          propertyKey -> null
+        }.toMap)
+      }
+    }
+
+    override def removeRelationshipsType(relationshipIds: Iterator[LynxId], typeName: LynxRelationshipType): Iterator[Option[LynxRelationship]] = {
+      val tableName = SchemaManager.findRelByLabel(schema, typeName.value).get.table_name
+      if (relationshipIds.nonEmpty) {
+        val idList = relationshipIds.mkString(",")
+        val sql = s"DELETE FROM $tableName WHERE id IN ($idList)"
+        Iterator(Option(mapRel(iterExecute(sql).toSeq.head, tableName, schema).value))
+      } else {
+        throw new Exception("relationshipIds is empty")
+      }
+    }
 
     override def commit: Boolean = true
   }
 
-  override def nodeAt(id: LynxId): Option[LynxNode] = ???
+  override def nodeAt(id: LynxId): Option[LynxNode] = {
+    val nameList: Seq[String] = schema.nodeSchema.map(_.table_name)
+    nodeAt(id, nameList)
+  }
 
   private def singleTableSelect(tableName: String, filters: Map[LynxPropertyKey, LynxValue]): Iterator[ResultSet] = {
     val conditions: Map[String, Any] = filters.map { case (k, v) => k.toString -> v.value }
