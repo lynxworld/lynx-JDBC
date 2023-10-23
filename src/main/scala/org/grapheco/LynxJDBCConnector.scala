@@ -6,6 +6,13 @@ import org.grapheco.lynx.runner.{CypherRunner, GraphModel}
 import org.grapheco.schema.{Schema, SchemaManager}
 
 object LynxJDBCConnector {
+  def connect(url: String, username: String, password: String, schema: Schema): LynxJDBCConnector = {
+    val db: DB = new DB(url, username, password)
+    val graphModel: JDBCGraphModel = new JDBCGraphModel(db.connection, schema)
+    val runner = new CypherRunner(graphModel)
+    new LynxJDBCConnector(graphModel, runner, schema)
+  }
+
   def connect(url: String, username: String, password: String): LynxJDBCConnector = {
     val db: DB = new DB(url, username, password)
     val schema: Schema = SchemaManager.autoGeneration(db.connection)
@@ -15,6 +22,7 @@ object LynxJDBCConnector {
     new LynxJDBCConnector(graphModel, runner, schema)
   }
 }
+
 
 case class LynxJDBCConnector(graphModel: GraphModel, runner: CypherRunner, schema: Schema) {
 

@@ -2,6 +2,7 @@ package org.grapheco
 
 import org.grapheco.LDBCTest.MyGraph
 import org.grapheco.lynx.types.time.LynxDate
+import org.grapheco.schema.SchemaManager
 import org.junit.{Assert, Test}
 
 import java.io.File
@@ -13,7 +14,7 @@ object LDBCTest {
   val MyGraph: LynxJDBCConnector = LynxJDBCConnector.connect(
     "jdbc:mysql://10.0.82.144:3306/LDBC1?serverTimezone=UTC&useUnicode=true&characterEncoding=utf8&useSSL=false",
     "root", "Hc1478963!"
-  )
+    , SchemaManager.readJson("SchemaFromRead.json"))
 }
 
 class LDBCTest {
@@ -287,32 +288,20 @@ class LDBCTest {
     result.show()
   }
 
-   @Test
-    def u1(): Unit = {
-      val q = getQuery("interactive-update-1.cypher")
-      val p = Map("cityId" -> "500000000000111", "personId" -> update_person_id(0),
-        "personFirstName" -> "Bob", "personLastName" -> "Green",
-        "gender" -> "Male", "birthday" -> "1995-06-06",
-        "creationDate" -> "2020-03-28", "locationIP" -> "10.0.88.88",
-        "browserUsed" -> "Chrome", "languages" -> "Chinese",
-        "emails" -> "bobgreem@gmail.com", "tagIds" -> update_comment_id,
-        "studyAt" -> update_person_id, "workAt" -> update_post_id
-      )
-     MyGraph.run(q, p).show()
-    }
-  //
-  //  @Test
-  //  def u2(): Unit = {
-  //    val q = getQuery("interactive-update-2.cypher")
-  //    val p = Map("personId" -> update_person_id(0),
-  //      "postId" -> update_post_id(0),
-  //      "creationDate" -> LynxDate.today)
-  //    MyGraph.run(q, p)
-  ////    val startTime = System.currentTimeMillis()
-  //    val verify = "MATCH (person:Person {id: $personId})-[r:LIKES]->(post:Post {id: $postId}) return r"
-  //    val result = MyGraph.run(verify, p)
-  //    result.show()
-  //  }
+  @Test
+  def u1(): Unit = {
+    val q = getQuery("interactive-update-1.cypher")
+    val p = Map("cityId" -> "500000000000111", "personId" -> update_person_id(0),
+      "personFirstName" -> "Bob", "personLastName" -> "Green",
+      "gender" -> "Male", "birthday" -> "1995-06-06",
+      "creationDate" -> "2020-03-28", "locationIP" -> "10.0.88.88",
+      "browserUsed" -> "Chrome", "languages" -> "Chinese",
+      "emails" -> "bobgreem@gmail.com", "tagIds" -> update_comment_id,
+      "studyAt" -> update_person_id, "workAt" -> update_post_id
+    )
+    MyGraph.run(q, p).show()
+  }
+
   @Test
   def u2(): Unit = {
     val q = getQuery("interactive-update-2.cypher")
@@ -320,9 +309,6 @@ class LDBCTest {
       "firstName" -> "Yang",
       "newFrom" -> "1666")
     MyGraph.run(q, p).show()
-//    val verify = "MATCH (person:Person {id: $personId}) RETURN person. firstName"
-//    MyGraph.run(verify, p).show()
-    //    val startTime = System.currentTimeMillis()
   }
 
   @Test
@@ -336,15 +322,6 @@ class LDBCTest {
 
   @Test
   def u4(): Unit = {
-    //      val q =
-    //        """
-    //          |MATCH (p:Person {id: $moderatorPersonId})
-    //          |CREATE (f:Forum {id: $forumId, title: $forumTitle, creationDate: $creationDate})-[:HAS_MODERATOR]->(p)
-    //          |WITH f
-    //          |UNWIND $tagIds AS tagId
-    //          |  MATCH (t:Tag {id: tagId})
-    //          |  CREATE (f)-[:HAS_TAG]->(t)
-    //          |""".stripMargin
     val q = getQuery("interactive-update-4.cypher")
     val p = Map("moderatorPersonId" -> update_person_id(0),
       "forumId" -> update_forum_id(0),
@@ -354,73 +331,74 @@ class LDBCTest {
     MyGraph.run(q, p).show()
   }
 
-      @Test
-      def u5(): Unit = {
-        val q = getQuery("interactive-update-5.cypher")
-        val p = Map("personId" -> update_person_id(2),
-          "forumId" -> update_forum_id(0),
-          "joinDate" -> LynxDate.today)
-        MyGraph.run(q, p)
-        val verify = "MATCH (f:Forum {id: $forumId})-[r:HAS_MEMBER]->(p:Person {id: $personId}) return r"
-        val result = MyGraph.run(verify, p)
-        Assert.assertTrue(
-          result.records()
-            .flatMap(_.getAsRelationship("r"))
-//            .flatMap(_.property(LynxPropertyKey("joinDate")))
-            .map(_.asInstanceOf[LynxDate]).exists(LynxDate.today.equals))
-      }
+  @Test
+  def u5(): Unit = {
+    val q = getQuery("interactive-update-5.cypher")
+    val p = Map("personId" -> update_person_id(2),
+      "forumId" -> update_forum_id(0),
+      "joinDate" -> LynxDate.today)
+    MyGraph.run(q, p)
+    val verify = "MATCH (f:Forum {id: $forumId})-[r:HAS_MEMBER]->(p:Person {id: $personId}) return r"
+    val result = MyGraph.run(verify, p)
+    Assert.assertTrue(
+      result.records()
+        .flatMap(_.getAsRelationship("r"))
+        //            .flatMap(_.property(LynxPropertyKey("joinDate")))
+        .map(_.asInstanceOf[LynxDate]).exists(LynxDate.today.equals))
+  }
+
   //
-      @Test
-      def u6(): Unit = {
-        val q = getQuery("interactive-update-6.cypher")
-        val p = Map("authorPersonId" -> update_person_id(0),
-          "countryId" -> update_country_id(0),
-          "forumId" -> update_forum_id(0),
-          "postId" -> "111",
-          "creationDate" -> LynxDate.today,
-          "locationIP" -> "10.0.88.88",
-          "browserUsed" -> "Chrome",
-          "content" -> "LOL",
-          "imageFile" -> "",
-          "length" -> 3,
-          "tagIds" -> update_tag_id
-        )
-        MyGraph.run(q, p).show()
-      }
+  @Test
+  def u6(): Unit = {
+    val q = getQuery("interactive-update-6.cypher")
+    val p = Map("authorPersonId" -> update_person_id(0),
+      "countryId" -> update_country_id(0),
+      "forumId" -> update_forum_id(0),
+      "postId" -> "111",
+      "creationDate" -> LynxDate.today,
+      "locationIP" -> "10.0.88.88",
+      "browserUsed" -> "Chrome",
+      "content" -> "LOL",
+      "imageFile" -> "",
+      "length" -> 3,
+      "tagIds" -> update_tag_id
+    )
+    MyGraph.run(q, p).show()
+  }
 
-      @Test
-      def u7(): Unit = {
-        val q = getQuery("interactive-update-7.cypher")
-        val p = Map("authorPersonId" -> update_person_id(0),
-          "countryId" -> update_country_id(0),
-          "replyToPostId" -> "1010307921",
-          "replyToCommentId" -> "51040",
-          "forumId" -> update_forum_id(0),
-          "commentId" -> "111",
-          "creationDate" -> LynxDate.today,
-          "locationIP" -> "10.0.88.88",
-          "browserUsed" -> "Chrome",
-          "content" -> "LOL",
-          "length" -> 3,
-          "tagIds" -> update_tag_id
-        )
-        MyGraph.run(q, p)
-      }
+  @Test
+  def u7(): Unit = {
+    val q = getQuery("interactive-update-7.cypher")
+    val p = Map("authorPersonId" -> update_person_id(0),
+      "countryId" -> update_country_id(0),
+      "replyToPostId" -> "1010307921",
+      "replyToCommentId" -> "51040",
+      "forumId" -> update_forum_id(0),
+      "commentId" -> "111",
+      "creationDate" -> LynxDate.today,
+      "locationIP" -> "10.0.88.88",
+      "browserUsed" -> "Chrome",
+      "content" -> "LOL",
+      "length" -> 3,
+      "tagIds" -> update_tag_id
+    )
+    MyGraph.run(q, p)
+  }
 
-      @Test
-      def u8(): Unit = {
-        val q = getQuery("interactive-update-8.cypher")
-        val p = Map(
-          "person1Id" -> update_person_id(8),
-          "person2Id" -> update_person_id(9),
-          "creationDate" -> LynxDate.today)
-        MyGraph.run(q, p)
-        val verify = "MATCH (p1:Person {id: $person1Id})-[r:KNOWS]->(p2:Person {id: $person2Id}) return r"
-        val result = MyGraph.run(verify, p)
-        Assert.assertTrue(
-          result.records()
-            .flatMap(_.getAsRelationship("r"))
-//            .flatMap(_.property(LynxPropertyKey("creationDate")))
-            .map(_.asInstanceOf[LynxDate]).exists(LynxDate.today.equals))
-      }
+  @Test
+  def u8(): Unit = {
+    val q = getQuery("interactive-update-8.cypher")
+    val p = Map(
+      "person1Id" -> update_person_id(8),
+      "person2Id" -> update_person_id(9),
+      "creationDate" -> LynxDate.today)
+    MyGraph.run(q, p).show()
+    //        val verify = "MATCH (p1:Person {id: $person1Id})-[r:KNOWS]->(p2:Person {id: $person2Id}) return r"
+    //        val result = MyGraph.run(verify, p)
+    //        Assert.assertTrue(
+    //          result.records()
+    //            .flatMap(_.getAsRelationship("r"))
+    ////            .flatMap(_.property(LynxPropertyKey("creationDate")))
+    //            .map(_.asInstanceOf[LynxDate]).exists(LynxDate.today.equals))
+  }
 }

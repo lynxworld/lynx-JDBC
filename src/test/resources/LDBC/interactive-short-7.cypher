@@ -2,12 +2,12 @@
 /*
 :param messageId: 206158432794
  */
-MATCH (m:Comment {`id:ID`: $messageId })<-[:replyOf]-(c:Comment)-[:hasCreator]->(p:Person)
+MATCH (m:Comment {id: $messageId })<-[:replyOf]-(c:Comment)-[:hasCreator]->(p:Person)
     OPTIONAL MATCH (m)-[:hasCreator]->(a:Person)-[r:knows]-(p)
-    RETURN c.`id:ID` AS commentId,
+    RETURN c.id AS commentId,
         c.content AS commentContent,
         c.creationDate AS commentCreationDate,
-        p.`id:ID` AS replyAuthorId,
+        p.id AS replyAuthorId,
         p.firstName AS replyAuthorFirstName,
         p.lastName AS replyAuthorLastName,
         CASE r

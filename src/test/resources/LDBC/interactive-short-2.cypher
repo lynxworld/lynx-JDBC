@@ -16,26 +16,26 @@
 //  p.id AS postID
 
 
-MATCH (:Person {id: $personId})<-[:hasCreator]-(message)
-return
-  message
-  LIMIT 1
+//MATCH (:Person {id: $personId})<-[:hasCreator]-(message)
+//return
+//  message
+//  LIMIT 1
 //原Cypher语句
 
-//MATCH (:Person {`id:ID`: $personId})<-[:hasCreator]-(message)
-//WITH
-//  message,
-//  message.`id:ID` AS messageId,
-//  message.creationDate AS messageCreationDate
-//  ORDER BY messageCreationDate DESC, messageId ASC
-//  LIMIT 1
-//MATCH (message)-[:replyOf*0..]->(post:Post)-[:hasCreator]->(person:Person)
-//RETURN
-//  messageId,
-//  coalesce(message.content,message.creationDate) AS messageContent,
-//  messageCreationDate,
-//  post.`id:ID` AS postId,
-//  person.`id:ID` AS personId,
-//  person.firstName AS personFirstName,
-//  person.lastName AS personLastName
-//   ORDER BY messageCreationDate DESC, messageId ASC
+MATCH (:Person {id: $personId})<-[:hasCreator]-(message)
+WITH
+  message,
+  message.id AS messageId,
+  message.creationDate AS messageCreationDate
+  ORDER BY messageCreationDate DESC, messageId ASC
+  LIMIT 1
+MATCH (message)-[:replyOf*0..]->(post:Post)-[:hasCreator]->(person:Person)
+RETURN
+  messageId,
+  coalesce(message.content, message.creationDate) AS messageContent,
+  messageCreationDate,
+  post.id AS postId,
+  person.id AS personId,
+  person.firstName AS personFirstName,
+  person.lastName AS personLastName
+  ORDER BY messageCreationDate DESC, messageId ASC
