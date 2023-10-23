@@ -16,4 +16,11 @@ class JsonTest {
         "root", "Hc1478963!")
     ))
   }
+
+  @Test
+  def readJson(): Unit = {
+    val readSchema = SchemaManager.readJson("")
+    if (readSchema.relMapping.nonEmpty)
+      SchemaManager.saveJson("SchemaFromRead.json", readSchema)
+  }
 }

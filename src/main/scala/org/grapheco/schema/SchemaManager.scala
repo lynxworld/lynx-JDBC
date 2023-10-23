@@ -1,33 +1,29 @@
 package org.grapheco.schema
 
-import org.grapheco.schema.NodeStructure.nodeWrites
 import play.api.libs.json.Format.GenericFormat
-import play.api.libs.json.{JsValue, Json}
+import play.api.libs.json.Json
+import play.api.libs.json.OFormat.oFormatFromReadsAndOWrites
 
 import java.io.PrintWriter
 import java.sql.{Connection, DatabaseMetaData}
-import scala.io.Source
+import scala.tools.scalap.scalax.rules.Failure
 
 object SchemaManager {
 
+
   def readJson(filePath: String): Schema = {
-    val jsonPath = if (filePath.isEmpty) "Schema.json" else s"$filePath"
+    val jsonPath = if (filePath.isEmpty) "Schema.json" else filePath
 
-    try {
-      val jsonString = Source.fromFile(jsonPath).mkString
-      val json = Json.parse(jsonString)
+    val jsonString = scala.io.Source.fromFile(jsonPath).mkString
+    val json = Json.parse(jsonString)
 
-      val nodeSchema = (json \ "Node_Tables").as[JsValue].asOpt[Seq[NodeStructure]].get
-      val relSchema = (json \ "Relationship_Tables").as[JsValue].asOpt[Seq[RelStructure]].get
-      val relMap = (json \ "Relationship_Tables").as[JsValue].asOpt[Map[String, RelMap]].get
+    val nodeSchema = (json \ "Node_Tables").validate[Seq[NodeStructure]].asOpt.getOrElse(Seq.empty[NodeStructure])
+    val relSchema = (json \ "Relationship_Tables").validate[Seq[RelStructure]].asOpt.getOrElse(Seq.empty[RelStructure])
+    val relMapping = (json \ "Relationship_Map").validate[Map[String, RelMap]].asOpt.getOrElse(Map.empty[String, RelMap])
 
-      Schema(nodeSchema, relSchema, relMap)
-    } catch {
-      case e: Exception =>
-        println(s"Error reading JSON from file: ${e.getMessage}")
-        null
-    }
+    Schema(nodeSchema, relSchema, relMapping)
   }
+
 
   def update(): Unit = {
     //TODO
@@ -40,7 +36,9 @@ object SchemaManager {
   def findRelByName(schema: Schema, tableName: String): Option[RelStructure] = schema.relSchema.find(_.table_name == tableName)
 
   def findNodeByLabel(schema: Schema, label: String): Option[NodeStructure] = schema.nodeSchema.find(_.label == label)
+
   def findRelByLabel(schema: Schema, label: String): Option[RelStructure] = schema.relSchema.find(_.label == label)
+
   def findNodeByName(schema: Schema, tableName: String): Option[NodeStructure] = schema.nodeSchema.find(_.table_name == tableName)
 
   def autoGeneration(connection: Connection): Schema = {
@@ -177,13 +175,11 @@ object SchemaManager {
       Json.obj(
         "Node_Tables" -> Json.toJson(schema.nodeSchema),
         "Relationship_Tables" -> Json.toJson(schema.relSchema),
-        "Relationship_Map" -> Json.toJson(schema.relMapping)))
+        "Relationship_Map" -> Json.toJson(schema.relMapping))
+    )
 
-    val jsonPath = filePath match {
-      case "" => "Schema.json"
-      case _ => filePath
-    }
-    "Schema.json"
+    val jsonPath = if (filePath.isEmpty) "Schema.json" else filePath
+
     val v_writer = new PrintWriter(jsonPath)
     v_writer.write(jsonContext)
     v_writer.close()
