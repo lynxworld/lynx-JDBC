@@ -44,7 +44,7 @@ Import by Maven.
       "jdbc:mysql://localhost:3306/DB",  //jdbc url
       "username",  // username
       "password",  // password
-      newSchema)   
+      newSchema)   // the schema you read from json
   ```
 3. Save the schema as json file.
   ```scala
