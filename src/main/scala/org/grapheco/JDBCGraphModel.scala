@@ -1,6 +1,5 @@
 package org.grapheco
 
-import cats.implicits.toFunctorOps
 import com.typesafe.scalalogging.LazyLogging
 import org.grapheco.Mapper.mapRel
 import org.grapheco.lynx.physical.{NodeInput, RelationshipInput}
@@ -13,6 +12,7 @@ import org.opencypher.v9_0.expressions.SemanticDirection.{BOTH, INCOMING, OUTGOI
 
 import java.sql.{Connection, ResultSet}
 import scala.Option.option2Iterable
+import scala.collection.mutable
 
 class JDBCGraphModel(val connection: Connection, val schema: Schema) extends GraphModel with LazyLogging {
 
@@ -29,8 +29,59 @@ class JDBCGraphModel(val connection: Connection, val schema: Schema) extends Gra
     Iterator.continually(result).takeWhile(_.next())
   }
 
-  override def write: WriteTask = new WriteTask {
-    override def createElements[T](nodesInput: Seq[(String, NodeInput)], relationshipsInput: Seq[(String, RelationshipInput)], onCreated: (Seq[(String, LynxNode)], Seq[(String, LynxRelationship)]) => T): T = ???
+  private def iterUpdate(sql: String): Unit = {
+    logger.info(sql)
+    val statement = connection.createStatement()
+    val result = statement.executeUpdate(sql)
+    //    Iterator.continually(result).takeWhile(_.n)
+    logger.info(s"Rows updated: $result")
+  }
+
+  override def write: WriteTask = this._write
+
+  val _write: WriteTask = new WriteTask {
+    val _nodesBuffer: mutable.Map[LynxIntegerID, LynxJDBCNode] = mutable.Map()
+
+    val _nodesToDelete: mutable.ArrayBuffer[LynxIntegerID] = mutable.ArrayBuffer()
+
+    val _relationshipsBuffer: mutable.Map[LynxIntegerID, LynxJDBCRelationship] = mutable.Map()
+
+    val _relationshipsToDelete: mutable.ArrayBuffer[LynxIntegerID] = mutable.ArrayBuffer()
+    private var _nodeId: Long = 0
+
+    private var _relationshipId: Long = 0
+
+    private def relationshipId: LynxIntegerID = {
+      _relationshipId += 1;
+      LynxIntegerID(_relationshipId)
+    }
+
+    private def nodeId: LynxIntegerID = {
+      _nodeId += 1
+      LynxIntegerID(_nodeId)
+    }
+
+    override def createElements[T](nodesInput: Seq[(String, NodeInput)],
+                                   relationshipsInput: Seq[(String, RelationshipInput)],
+                                   onCreated: (Seq[(String, LynxNode)], Seq[(String, LynxRelationship)]) => T): T = {
+      val nodesMap: Map[String, LynxJDBCNode] = nodesInput.toMap
+        .map { case (valueName, input) => valueName -> LynxJDBCNode(nodeId, input.labels, input.props.toMap) }
+
+      def localNodeRef(ref: Any): LynxIntegerID = ref match {
+        case StoredNodeInputRef(id) => LynxIntegerID(id.toLynxInteger.value)
+        case ContextualNodeInputRef(valueName) => nodesMap(valueName).id
+      }
+
+      val relationshipsMap: Map[String, LynxJDBCRelationship] = relationshipsInput.toMap.map {
+        case (valueName, input) =>
+          valueName -> LynxJDBCRelationship(relationshipId, localNodeRef(input.startNodeRef),
+            localNodeRef(input.endNodeRef), input.types.headOption, input.props.toMap)
+      }
+
+      _nodesBuffer ++= nodesMap.map { case (_, node) => (node.id, node) }
+      _relationshipsBuffer ++= relationshipsMap.map { case (_, relationship) => (relationship.id, relationship) }
+      onCreated(nodesMap.toSeq, relationshipsMap.toSeq)
+    }
 
     override def deleteRelations(ids: Iterator[LynxId]): Unit = {
       if (ids.nonEmpty) {
@@ -38,7 +89,7 @@ class JDBCGraphModel(val connection: Connection, val schema: Schema) extends Gra
         val idList = ids.mkString(",")
         for (tableName <- tableNames) {
           val sql = s"DELETE FROM $tableName WHERE id IN ($idList)"
-          iterExecute(sql)
+          iterUpdate(sql)
         }
       }
     }
@@ -50,25 +101,27 @@ class JDBCGraphModel(val connection: Connection, val schema: Schema) extends Gra
         val idList = ids.mkString(",")
         for (tableName <- tableNames) {
           val sql = s"DELETE FROM $tableName WHERE id IN ($idList)"
-          iterExecute(sql)
+          iterUpdate(sql)
         }
       }
     }
 
     def updateTable(lynxId: LynxId, table: Any, propMap: Map[LynxPropertyKey, LynxValue]): Iterator[ResultSet] = {
-      val (tableName, props) = table match {
-        case v: NodeStructure => (v.table_name, v.properties)
-        case v: RelStructure => (v.table_name, v.properties)
+      val (tableName, props, idCol) = table match {
+        case v: NodeStructure => (v.table_name, v.properties, v.id)
+        case v: RelStructure => (v.table_name, v.properties, v.table_id)
       }
       val updateSql = s"UPDATE $tableName SET "
+      //      var i
       val valueSql =
         propMap.map { case (key, value) =>
           if (props.foldLeft(Map.empty[String, String]) {
             case (acc, (key, value)) => acc + (key -> value)
           }(key.value).nonEmpty)
             s"${key.value} = '${value.toString}'"
-        }.mkString(", ") + s" WHERE id = $lynxId"
-      iterExecute(updateSql + valueSql)
+        }.mkString(", ") + s" WHERE  $idCol = $lynxId"
+      iterUpdate(updateSql + valueSql)
+      iterExecute(s"select * from $tableName WHERE $idCol = $lynxId")
     }
 
     override def updateNode(lynxId: LynxId, labels: Seq[LynxNodeLabel], props: Map[LynxPropertyKey, LynxValue]): Option[LynxNode] = {
@@ -156,7 +209,9 @@ class JDBCGraphModel(val connection: Connection, val schema: Schema) extends Gra
       if (relationshipIds.nonEmpty) {
         val idList = relationshipIds.mkString(",")
         val sql = s"DELETE FROM $tableName WHERE id IN ($idList)"
-        Iterator(Option(mapRel(iterExecute(sql).toSeq.head, tableName, schema).value))
+        iterUpdate(sql)
+        val newRel = iterExecute(s"select * from $tableName WHERE id = $idList  ")
+        Iterator(Option(mapRel(newRel.toSeq.head, tableName, schema).value))
       } else {
         throw new Exception("relationshipIds is empty")
       }
@@ -209,7 +264,6 @@ class JDBCGraphModel(val connection: Connection, val schema: Schema) extends Gra
     if (nodeFilter.labels.isEmpty && nodeFilter.properties.isEmpty) return nodes()
     val label = nodeFilter.labels.head.toString
     val filteredSchema = SchemaManager.findNodeByName(schema, label)
-
     filteredSchema match {
       case Some(schemas) =>
         singleTableSelect(label, nodeFilter.properties).map { rs =>
